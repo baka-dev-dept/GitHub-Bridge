@@ -730,7 +730,7 @@ AI Agent 只能调用已注册的 MCP Tools，不能直接访问 Token 存储。
 
 ## License
 
-待定。
+[License](./LICENSE)
 
 ---
 
