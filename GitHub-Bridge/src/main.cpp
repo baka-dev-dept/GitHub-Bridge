@@ -2,6 +2,8 @@
 #include "Core/Gateway.h"
 #include "Utils/Logger.h"
 
+#include <windows.h>
+
 #include <fcntl.h>
 #include <io.h>
 
@@ -13,10 +15,23 @@ static void SetStdioBinaryMode() {
     _setmode(_fileno(stdout), _O_BINARY);
 }
 
+// 控制台默认按系统代码页解码（简体中文是 936/GBK），而本工程以 /utf-8 编译，
+// 日志写出的就是 UTF-8 字节。不切代码页的话中文日志在 conhost 里会变成乱码。
+// 只影响本进程挂接的控制台，进程退出即恢复，不动系统全局设置；
+// stdout 被重定向成管道时该调用不改变字节流，MCP 协议不受影响。
+static void SetConsoleUtf8() {
+    if (GetConsoleWindow() == nullptr) {
+        return;
+    }
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+}
+
 int main(int argc, char** argv) {
     using namespace ghb;
 
     SetStdioBinaryMode();
+    SetConsoleUtf8();
 
     (void)argc;
     (void)argv;
