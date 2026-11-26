@@ -18,6 +18,12 @@
     <Filter Include="源文件\Utils">
       <UniqueIdentifier>{A1B2C3D4-0004-4000-8000-000000000004}</UniqueIdentifier>
     </Filter>
+    <Filter Include="源文件\Security">
+      <UniqueIdentifier>{A1B2C3D4-0009-4000-8000-000000000009}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\Security">
+      <UniqueIdentifier>{A1B2C3D4-0010-4000-8000-000000000010}</UniqueIdentifier>
+    </Filter>
     <Filter Include="头文件">
       <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
       <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
@@ -60,6 +66,15 @@
     <ClCompile Include="src\Utils\Logger.cpp">
       <Filter>源文件\Utils</Filter>
     </ClCompile>
+    <ClCompile Include="src\Core\TokenTools.cpp">
+      <Filter>源文件\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Security\TokenManager.cpp">
+      <Filter>源文件\Security</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Security\TokenStorage.cpp">
+      <Filter>源文件\Security</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\Types\GitHubResponse.h">
@@ -100,6 +115,15 @@
     </ClInclude>
     <ClInclude Include="include\Utils\Logger.h">
       <Filter>头文件\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\TokenTools.h">
+      <Filter>头文件\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Security\TokenManager.h">
+      <Filter>头文件\Security</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Security\TokenStorage.h">
+      <Filter>头文件\Security</Filter>
     </ClInclude>
     <ClInclude Include="third_party\nlohmann\adl_serializer.hpp">
       <Filter>第三方</Filter>

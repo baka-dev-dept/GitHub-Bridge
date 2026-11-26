@@ -152,6 +152,9 @@
     <ClCompile Include="src\MCP\JsonCodec.cpp" />
     <ClCompile Include="src\MCP\StdioTransport.cpp" />
     <ClCompile Include="src\Utils\Logger.cpp" />
+    <ClCompile Include="src\Core\TokenTools.cpp" />
+    <ClCompile Include="src\Security\TokenManager.cpp" />
+    <ClCompile Include="src\Security\TokenStorage.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\Core\BuiltinTools.h" />
@@ -167,6 +170,9 @@
     <ClInclude Include="include\Types\RpcMessage.h" />
     <ClInclude Include="include\Types\Security.h" />
     <ClInclude Include="include\Types\Types.h" />
+    <ClInclude Include="include\Core\TokenTools.h" />
+    <ClInclude Include="include\Security\TokenManager.h" />
+    <ClInclude Include="include\Security\TokenStorage.h" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="third_party\nlohmann\adl_serializer.hpp" />
