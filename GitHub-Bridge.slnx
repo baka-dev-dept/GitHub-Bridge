@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="GitHub-Bridge/GitHub-Bridge.vcxproj" />
+  <Project Path="GitHub-Bridge/GitHub-Bridge.vcxproj" Id="621f7560-754e-4b30-9714-0d4b4b84e1ab" />
 </Solution>

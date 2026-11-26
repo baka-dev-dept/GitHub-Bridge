@@ -146,8 +146,20 @@
 
   <ItemGroup>
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\Core\BuiltinTools.cpp" />
+    <ClCompile Include="src\Core\Gateway.cpp" />
+    <ClCompile Include="src\Core\ToolRegistry.cpp" />
+    <ClCompile Include="src\MCP\JsonCodec.cpp" />
+    <ClCompile Include="src\MCP\StdioTransport.cpp" />
+    <ClCompile Include="src\Utils\Logger.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\Core\BuiltinTools.h" />
+    <ClInclude Include="include\Core\Gateway.h" />
+    <ClInclude Include="include\Core\ToolRegistry.h" />
+    <ClInclude Include="include\MCP\JsonCodec.h" />
+    <ClInclude Include="include\MCP\StdioTransport.h" />
+    <ClInclude Include="include\Utils\Logger.h" />
     <ClInclude Include="include\Types\GitHubResponse.h" />
     <ClInclude Include="include\Types\LogLevel.h" />
     <ClInclude Include="include\Types\McpTool.h" />
