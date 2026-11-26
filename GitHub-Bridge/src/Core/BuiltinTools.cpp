@@ -1,5 +1,6 @@
 #include "Core/BuiltinTools.h"
 
+#include "Core/GitHubTools.h"
 #include "Core/ToolRegistry.h"
 #include "Core/TokenTools.h"
 #include "Types/McpTool.h"
@@ -27,7 +28,7 @@ std::string HandleServerInfo(const std::string&) {
         {"protocol_version", kMcpProtocolVersion},
         {"tool_count", ToolRegistry::Get()->Size()},
         {"server_time_utc", stamp},
-        {"phase", "2"},
+        {"phase", "3"},
     };
     return info.dump();
 }
@@ -49,6 +50,7 @@ void RegisterBuiltinTools() {
     ToolRegistry::Get()->Register(info);
 
     RegisterTokenTools();
+    RegisterGitHubTools();
 }
 
 } // namespace ghb

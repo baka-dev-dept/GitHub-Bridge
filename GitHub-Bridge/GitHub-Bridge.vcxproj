@@ -155,6 +155,9 @@
     <ClCompile Include="src\Core\TokenTools.cpp" />
     <ClCompile Include="src\Security\TokenManager.cpp" />
     <ClCompile Include="src\Security\TokenStorage.cpp" />
+    <ClCompile Include="src\GitHub\GitHubClient.cpp" />
+    <ClCompile Include="src\GitHub\WinHttpClient.cpp" />
+    <ClCompile Include="src\Core\GitHubTools.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\Core\BuiltinTools.h" />
@@ -173,6 +176,9 @@
     <ClInclude Include="include\Core\TokenTools.h" />
     <ClInclude Include="include\Security\TokenManager.h" />
     <ClInclude Include="include\Security\TokenStorage.h" />
+    <ClInclude Include="include\GitHub\GitHubClient.h" />
+    <ClInclude Include="include\GitHub\WinHttpClient.h" />
+    <ClInclude Include="include\Core\GitHubTools.h" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="third_party\nlohmann\adl_serializer.hpp" />

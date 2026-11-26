@@ -1,8 +1,10 @@
 #include "Core/TokenTools.h"
 
 #include "Core/ToolRegistry.h"
+#include "GitHub/GitHubClient.h"
 #include "Security/TokenManager.h"
 #include "Security/TokenStorage.h"
+#include "Types/GitHubResponse.h"
 #include "Types/McpTool.h"
 
 #include <nlohmann/json.hpp>
@@ -47,16 +49,54 @@ std::string HandleTokenStatus(const std::string&) {
         }
     } else {
         // Phase 2 没有接 GitHub API，不能声称令牌有效。
-        message = "令牌已配置且可解密；有效性尚未校验（需要联网调用 GitHub API，属于后续阶段）";
+        message = "令牌已配置且可解密；有效性尚未校验";
+    }
+
+    // configured 只说明本地能解密，valid 必须是真实 API 调用的结果。
+    bool valid = false;
+    bool validated = false;
+    std::string login;
+    std::string scopes = snapshot.scopes_csv;
+    std::string validation_error;
+
+    if (snapshot.configured) {
+        TokenHandle handle = TokenManager::Get()->AcquireHandle();
+        const GitHubResponse response = GitHubClient::Get()->GetUser(handle.authorization_header);
+        // 响应头里的 scope 比本地推断更权威，有就覆盖。
+        if (!response.headers.oauth_scopes.empty()) {
+            scopes = response.headers.oauth_scopes;
+        }
+        if (response.ok) {
+            const nlohmann::json body = nlohmann::json::parse(response.body, nullptr, false);
+            if (body.is_object()) {
+                login = body.value("login", "");
+                valid = true;
+                validated = true;
+                message = "令牌有效，账号 " + login;
+            }
+        } else if (response.error_kind == GitHubErrorKind::Transport ||
+                   response.error_kind == GitHubErrorKind::Decode) {
+            // 网络不通不等于令牌无效。这种情况下必须保持 validated=false，
+            // 否则会把「没连上」误报成「令牌坏了」，让用户白换令牌。
+            validation_error = "网络不可达，无法校验令牌有效性（这不代表令牌无效）";
+            message = "令牌已配置且可解密；本次无法联网校验";
+        } else {
+            validated = true;
+            validation_error = response.error_message;
+            message = "令牌被 GitHub 拒绝: " + response.error_message;
+        }
     }
 
     const nlohmann::json result = {
         {"configured", snapshot.configured},
-        {"valid", snapshot.valid},
-        {"validated", false},
+        {"valid", valid},
+        {"validated", validated},
+        {"login", login},
+        {"scopes", scopes},
         {"token_type", snapshot.token_type},
         {"storage_status", LoadStatusName(load_status)},
         {"storage_path", TokenStorage::Get()->ResolvePaths().data_file},
+        {"validation_error", validation_error},
         {"message", message},
     };
     return result.dump();

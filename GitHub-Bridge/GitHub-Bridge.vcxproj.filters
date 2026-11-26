@@ -21,6 +21,12 @@
     <Filter Include="源文件\Security">
       <UniqueIdentifier>{A1B2C3D4-0009-4000-8000-000000000009}</UniqueIdentifier>
     </Filter>
+    <Filter Include="源文件\GitHub">
+      <UniqueIdentifier>{A1B2C3D4-0011-4000-8000-000000000011}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\GitHub">
+      <UniqueIdentifier>{A1B2C3D4-0012-4000-8000-000000000012}</UniqueIdentifier>
+    </Filter>
     <Filter Include="头文件\Security">
       <UniqueIdentifier>{A1B2C3D4-0010-4000-8000-000000000010}</UniqueIdentifier>
     </Filter>
@@ -75,6 +81,15 @@
     <ClCompile Include="src\Security\TokenStorage.cpp">
       <Filter>源文件\Security</Filter>
     </ClCompile>
+    <ClCompile Include="src\GitHub\GitHubClient.cpp">
+      <Filter>源文件\GitHub</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GitHub\WinHttpClient.cpp">
+      <Filter>源文件\GitHub</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\GitHubTools.cpp">
+      <Filter>源文件\Core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\Types\GitHubResponse.h">
@@ -124,6 +139,15 @@
     </ClInclude>
     <ClInclude Include="include\Security\TokenStorage.h">
       <Filter>头文件\Security</Filter>
+    </ClInclude>
+    <ClInclude Include="include\GitHub\GitHubClient.h">
+      <Filter>头文件\GitHub</Filter>
+    </ClInclude>
+    <ClInclude Include="include\GitHub\WinHttpClient.h">
+      <Filter>头文件\GitHub</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\GitHubTools.h">
+      <Filter>头文件\Core</Filter>
     </ClInclude>
     <ClInclude Include="third_party\nlohmann\adl_serializer.hpp">
       <Filter>第三方</Filter>
