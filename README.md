@@ -37,7 +37,7 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 | MCP stdio 传输 + JSON-RPC 2.0 收发 | ✅ 已实现，实测通过 |
 | `initialize` / `tools/list` / `tools/call` / `ping` / 通知 | ✅ 已实现，实测通过 |
 | DPAPI 令牌加密存储（第二因子 + ACL + 原子写入） | ✅ 已实现，实测通过 |
-| WinHTTP 传输 + `/user` + `/rate_limit` | ✅ 已实现，真令牌成功路径已实测 |
+| WinHTTP 传输 + `/user` + `/rate_limit` | ✅ 已实现，详见下文「GitHub API 支持情况」 |
 | 仓库 / 文件 / Issue / PR / Release 工具 | ⬜ 未开始 |
 | PermissionManager 权限开关 + 二次确认 | ⬜ 契约已定义，未实现 |
 | GraphQL API | ⬜ 未开始 |
@@ -55,6 +55,74 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 | `github_rate_limit` | 调 `/rate_limit`，无令牌时以匿名身份查询 | 是 | 否 |
 
 `github_token_status` 的三个布尔值刻意分开：**本地能解密 ≠ GitHub 认可该令牌**。网络不通时 `validated` 保持 `false`，避免把「没连上」误报成「令牌坏了」。
+
+## GitHub API 支持情况
+
+目标 **31** 个端点（取自 [idea.md](./idea.md) 的 MCP Tools 章节），已实现 **3** 个，其余 **28** 个未实现（含 GraphQL）。
+
+### 已实现的 API
+
+| 工具 | REST 端点 | 说明 | 验证状态 |
+|---|---|---|---|
+| `github_get_user` | `GET /user` | 当前令牌对应的账号 login / id / name / type，回填 `X-OAuth-Scopes` | ✅ 真令牌实测 |
+| `github_rate_limit` | `GET /rate_limit` | 各资源限额；匿名 60/h，认证 5000/h | ✅ 匿名与认证均实测 |
+| `github_token_status` | `GET /user` | 用真实请求校验令牌有效性，401 即 `valid: false` | ✅ 有效与吊销两种状态均实测 |
+
+这三项共享 `include/GitHub/` 的传输层（TLS 1.2/1.3、gzip、禁重定向、超时、10 类错误分类、响应头抽取），后续 API 直接复用，不需要重做网络层。
+
+### 未实现的 API
+
+#### Repository（5）
+
+- ⬜ `github_search_repositories` — `GET /search/repositories`
+- ⬜ `github_get_repository` — `GET /repos/{owner}/{repo}`
+- ⬜ `github_create_repository` — `POST /user/repos`
+- ⬜ `github_update_repository` — `PATCH /repos/{owner}/{repo}`
+- ⬜ `github_delete_repository` — `DELETE /repos/{owner}/{repo}`
+
+#### Files（4）
+
+- ⬜ `github_get_file` — `GET /repos/{owner}/{repo}/contents/{path}`
+- ⬜ `github_get_file_content` — 同上，并解码 base64 正文
+- ⬜ `github_create_or_update_file` — `PUT /repos/{owner}/{repo}/contents/{path}`
+- ⬜ `github_delete_file` — `DELETE /repos/{owner}/{repo}/contents/{path}`
+
+#### Issues（5）
+
+- ⬜ `github_list_issues` — `GET /repos/{owner}/{repo}/issues`
+- ⬜ `github_get_issue` — `GET /repos/{owner}/{repo}/issues/{number}`
+- ⬜ `github_create_issue` — `POST /repos/{owner}/{repo}/issues`
+- ⬜ `github_update_issue` — `PATCH /repos/{owner}/{repo}/issues/{number}`
+- ⬜ `github_close_issue` — `PATCH` 改 `state`
+
+#### Branches（4）
+
+- ⬜ `github_list_branches` — `GET /repos/{owner}/{repo}/branches`
+- ⬜ `github_get_branch` — `GET /repos/{owner}/{repo}/branches/{branch}`
+- ⬜ `github_create_branch` — `POST /repos/{owner}/{repo}/git/refs`
+- ⬜ `github_delete_branch` — `DELETE /repos/{owner}/{repo}/git/refs/heads/{branch}`
+
+#### Pull Requests（5）
+
+- ⬜ `github_list_pull_requests` — `GET /repos/{owner}/{repo}/pulls`
+- ⬜ `github_get_pull_request` — `GET /repos/{owner}/{repo}/pulls/{number}`
+- ⬜ `github_create_pull_request` — `POST /repos/{owner}/{repo}/pulls`
+- ⬜ `github_update_pull_request` — `PATCH /repos/{owner}/{repo}/pulls/{number}`
+- ⬜ `github_merge_pull_request` — `PUT /repos/{owner}/{repo}/pulls/{number}/merge`
+
+#### Releases（4）
+
+- ⬜ `github_list_releases` — `GET /repos/{owner}/{repo}/releases`
+- ⬜ `github_get_release` — `GET /repos/{owner}/{repo}/releases/{id}`
+- ⬜ `github_create_release` — `POST /repos/{owner}/{repo}/releases`
+- ⬜ `github_update_release` — `PATCH /repos/{owner}/{repo}/releases/{id}`
+
+#### 其他
+
+- ⬜ GraphQL API — `POST /graphql`
+
+> 工具名与端点取自 `idea.md`，参数结构在实现时按该文档风格补充。
+> **写操作与删除类端点**建议先落地 PermissionManager 与 `confirm_token` 二次确认再开放，避免无防护的不可逆操作。
 
 ## 构建
 
