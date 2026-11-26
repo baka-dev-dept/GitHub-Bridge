@@ -1,0 +1,15 @@
+/.vs
+
+# 构建产物
+/x64/
+/Win32/
+*.user
+*.suo
+*.obj
+*.pdb
+*.ilk
+*.idb
+
+# 运行期数据：DPAPI 加密的 tokens.dat 与日志，一律不入库
+/out/
+*.log
