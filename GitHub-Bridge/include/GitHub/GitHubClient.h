@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GitHub/WinHttpClient.h"
 #include "Types/GitHubResponse.h"
 
 #include <map>
@@ -44,6 +45,9 @@ public:
 private:
     GitHubClient() = default;
     ~GitHubClient() = default;
+
+    // 发一次请求，不含限流等待与重试。重试逻辑在 Request 里，避免递归。
+    HttpResponse SendOnce(const std::string& method, const std::string& path, const std::string& body, const std::string& authorization);
 
     static GitHubResponse Classify(int status, const std::string& body, const std::map<std::string, std::string>& headers);
 };

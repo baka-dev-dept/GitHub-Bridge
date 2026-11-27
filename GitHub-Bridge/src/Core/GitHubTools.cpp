@@ -2,15 +2,23 @@
 
 #include "Core/ToolRegistry.h"
 #include "GitHub/GitHubClient.h"
+#include "GitHub/RateLimiter.h"
 #include "Security/TokenManager.h"
 #include "Types/GitHubResponse.h"
 #include "Types/McpTool.h"
 
 #include <nlohmann/json.hpp>
 
+#include <chrono>
+
 namespace ghb {
 
 namespace {
+
+int64_t NowMs() {
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
 
 std::string ErrorKindName(GitHubErrorKind kind) {
     switch (kind) {
@@ -49,13 +57,36 @@ std::string FailureHint(GitHubErrorKind kind) {
 }
 
 nlohmann::json FailureJson(const GitHubResponse& response) {
-    return {
+    nlohmann::json out = {
         {"ok", false},
         {"error_kind", ErrorKindName(response.error_kind)},
         {"status", response.status},
         {"message", response.error_message},
         {"hint", FailureHint(response.error_kind)},
     };
+
+    // 限流时把「还要等多久」算成具体秒数给出去，Agent 可以直接据此等待重试，
+    // 而不是拿一句「请稍后再试」无从下手。
+    if (response.error_kind == GitHubErrorKind::RateLimited) {
+        out["rate_limit"] = {
+            {"limit", response.headers.rate_limit.limit},
+            {"remaining", response.headers.rate_limit.remaining},
+            {"reset_at", response.headers.rate_limit.reset_at},
+        };
+        const int64_t wait_ms = RateLimiter::Get()->WaitBeforeMs(NowMs());
+        if (wait_ms > 0) {
+            const int64_t wait_sec = (wait_ms + 999) / 1000;
+            out["retry_after_seconds"] = wait_sec;
+            out["hint"] = "额度已耗尽（上限 " + std::to_string(response.headers.rate_limit.limit) +
+                          "），请在约 " + std::to_string(wait_sec) + " 秒后重试";
+        } else if (wait_ms == 0) {
+            // 重置时间已过但服务端仍返回限流，说明是别的限制（例如次级限流）。
+            out["hint"] = "服务端仍返回限流，但本地判断重置时间已过，可能是次级限流，请稍后重试";
+        } else {
+            out["hint"] = "额度已耗尽，且无法从响应头确定重置时间，请稍后重试";
+        }
+    }
+    return out;
 }
 
 // 需要令牌的工具用这个拿句柄；未配置时直接返回「失败 JSON」并置 ok=false。

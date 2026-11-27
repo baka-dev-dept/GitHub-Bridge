@@ -1,13 +1,27 @@
 #include "GitHub/GitHubClient.h"
 
+#include "GitHub/RateLimiter.h"
 #include "GitHub/WinHttpClient.h"
 #include "Utils/Logger.h"
 
 #include <nlohmann/json.hpp>
 
+#include <windows.h>
+
+#include <chrono>
+
 namespace ghb {
 
 namespace {
+
+int64_t NowMs() {
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
+
+void SleepMs(DWORD ms) {
+    Sleep(ms);
+}
 
 std::string HeaderValue(const std::map<std::string, std::string>& headers, const char* name) {
     const auto it = headers.find(name);
@@ -91,6 +105,62 @@ GitHubResponse GitHubClient::Classify(int status, const std::string& body, const
 }
 
 GitHubResponse GitHubClient::Request(const std::string& method, const std::string& path, const std::string& body, const std::string& authorization) {
+    // 只有 GET 是幂等的，才能在限流后安全重发；写操作重发可能重复创建或重复提交。
+    const bool idempotent = (method == "GET");
+
+    // 发送前先看已知状态：如果正处于限流窗口且剩余等待在可接受范围内，就先等。
+    // 这样可以避免明知会失败还去撞一次配额。
+    if (idempotent) {
+        const int64_t pending = RateLimiter::Get()->WaitBeforeMs(NowMs());
+        if (pending > 0 && pending <= RateLimiter::kMaxAutoWaitMs) {
+            Logger::Get()->Info("限流窗口内，等待 " + std::to_string(pending) + "ms 后重试");
+            SleepMs(static_cast<DWORD>(pending));
+        }
+    }
+
+    const HttpResponse http = SendOnce(method, path, body, authorization);
+    if (http.TransportFailed()) {
+        Logger::Get()->Warn(method + " " + path + " 传输失败: " + http.transport_error);
+        return GitHubResponse::MakeTransportError(http.transport_error);
+    }
+
+    Logger::Get()->Debug(method + " " + path + " -> " + std::to_string(http.status));
+
+    GitHubResponse response = Classify(http.status, http.body, http.headers);
+    RateLimiter::Get()->Observe(response.headers, NowMs());
+
+    // 限流且是幂等请求且能接受等待时，等一次再重发。只重试一次，
+    // 不循环——再失败说明不是单纯限流，继续等只会拖住调用方。
+    if (response.error_kind == GitHubErrorKind::RateLimited && idempotent) {
+        const int64_t wait_ms = RateLimiter::Get()->WaitBeforeMs(NowMs());
+        if (wait_ms > 0 && wait_ms <= RateLimiter::kMaxAutoWaitMs) {
+            Logger::Get()->Info("触发限流，等待 " + std::to_string(wait_ms) + "ms 后重试一次");
+            SleepMs(static_cast<DWORD>(wait_ms));
+
+            const HttpResponse retry_http = SendOnce(method, path, body, authorization);
+            if (!retry_http.TransportFailed()) {
+                response = Classify(retry_http.status, retry_http.body, retry_http.headers);
+                RateLimiter::Get()->Observe(response.headers, NowMs());
+                Logger::Get()->Debug("重试 " + path + " -> " + std::to_string(retry_http.status));
+            }
+            // 传输失败的保留第一次的响应，让调用方看到原始的限流原因。
+        }
+    }
+
+    // 成功状态但正文不是 JSON，说明链路或服务端返回了非预期内容。
+    // 204 No Content 是正常结果（删除类接口），没有正文不算解码失败。
+    if (response.ok && !response.body.empty()) {
+        const nlohmann::json parsed = nlohmann::json::parse(response.body, nullptr, false);
+        if (parsed.is_discarded()) {
+            response.ok = false;
+            response.error_kind = GitHubErrorKind::Decode;
+            response.error_message = "响应正文不是合法 JSON";
+        }
+    }
+    return response;
+}
+
+HttpResponse GitHubClient::SendOnce(const std::string& method, const std::string& path, const std::string& body, const std::string& authorization) {
     HttpRequest request;
     request.method = method;
     request.path = path;
@@ -107,27 +177,7 @@ GitHubResponse GitHubClient::Request(const std::string& method, const std::strin
         request.headers.push_back({"Authorization", authorization});
     }
 
-    const HttpResponse http = WinHttpClient::Get()->Send(request);
-    if (http.TransportFailed()) {
-        Logger::Get()->Warn(method + " " + path + " 传输失败: " + http.transport_error);
-        return GitHubResponse::MakeTransportError(http.transport_error);
-    }
-
-    Logger::Get()->Debug(method + " " + path + " -> " + std::to_string(http.status));
-
-    GitHubResponse response = Classify(http.status, http.body, http.headers);
-
-    // 成功状态但正文不是 JSON，说明链路或服务端返回了非预期内容。
-    // 204 No Content 是正常结果（删除类接口），没有正文不算解码失败。
-    if (response.ok && !http.body.empty()) {
-        const nlohmann::json parsed = nlohmann::json::parse(http.body, nullptr, false);
-        if (parsed.is_discarded()) {
-            response.ok = false;
-            response.error_kind = GitHubErrorKind::Decode;
-            response.error_message = "响应正文不是合法 JSON";
-        }
-    }
-    return response;
+    return WinHttpClient::Get()->Send(request);
 }
 
 GitHubResponse GitHubClient::AnonymousGet(const std::string& path) {
