@@ -126,9 +126,11 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 |---|---|---|---|
 | `github_graphql` | 执行 GraphQL 查询，返回 `data` 或 `graphql_errors` | 视查询而定 | |
 
-> ⚠️ **当前限制**：`github_graphql` 挂的是 `read` 权限键，但 GraphQL **可以执行 mutation**（写操作）。
-> 也就是说 `read: true` 时，通过 GraphQL mutation 仍能修改仓库内容，权限开关对它不起约束作用。
-> 要么只把它当查询工具用，要么在后续版本中为 mutation 增加识别与独立开关。
+**权限按 query 内容判定**：工具注册时默认挂 `read`，但执行前会扫描 query 文本——含 `mutation` 关键字的按 `write` 开关裁决。
+
+判定做了保守处理：先剥离字符串字面量（`"..."`、`"""..."""`，含 `\"` 转义）与 `#` 注释，再按**词边界**匹配 `mutation`。因此 `myMutation`、`mutationCount` 这类标识符，以及写在字符串或注释里的 "mutation" 字样，都不会被误判为写操作。
+
+> mutation 没有具体目标对象，无法套用 `confirm_token` 的目标绑定语义，所以它**只受 `write` 开关约束，不要求二次确认**。
 
 ### 几个刻意的设计
 
@@ -202,7 +204,7 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 | 键 | 默认 | 控制的工具 |
 |---|---|---|
 | `read` | `true` | 所有只读工具 |
-| `write` | `true` | 更新类 + `token_import` / `token_clear` / `delete_file` |
+| `write` | `true` | 更新类 + `token_import` / `token_clear` / `delete_file` + **GraphQL mutation** |
 | `create` | `true` | 建仓库 / Issue / 分支 / PR / Release |
 | `delete_repository` | **`false`** | `github_delete_repository` |
 | `delete_branch` | **`false`** | `github_delete_branch` |
@@ -302,7 +304,7 @@ GitHub-Bridge/
 
 - 只支持**单令牌**，多账号 profile 未实现；
 - 无**通用**请求重试（网络抖动直接失败），无响应缓存；
-- **`github_graphql` 绕过权限开关**：它挂 `read` 键，但 GraphQL mutation 能写数据（见上文说明）；
+- `github_graphql` 的 mutation 判定基于词法扫描而非完整语法解析，极少数特殊构造可能漏判；
 - 无单元测试工程，现有验证为手工测试脚本；
 - 无 CMake 工程，仅 MSBuild；
 - `/rate_limit` 不消耗配额，容易被误判为「额度没下降」；

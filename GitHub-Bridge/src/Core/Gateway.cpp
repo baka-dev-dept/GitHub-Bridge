@@ -174,8 +174,18 @@ std::string Gateway::HandleToolsCall(const RpcMessage& request) {
             }
         }
     }
+    // 权限键默认取工具注册时的静态值；声明了解析钩子的工具（GraphQL）
+    // 按本次参数重新决定，否则 mutation 会绕开 write 开关。
+    std::string permission_key = registration->tool.safety.permission_key;
+    if (registration->tool.safety.resolve_permission_key != nullptr) {
+        const std::string resolved = registration->tool.safety.resolve_permission_key(arguments);
+        if (!resolved.empty()) {
+            permission_key = resolved;
+        }
+    }
+
     const std::string fingerprint = PermissionManager::Fingerprint(tool_name, arguments);
-    const PermissionOutcome permission = PermissionManager::Get()->Check(tool_name, registration->tool.safety.requires_confirmation, registration->tool.safety.permission_key, fingerprint, confirm_token);
+    const PermissionOutcome permission = PermissionManager::Get()->Check(tool_name, registration->tool.safety.requires_confirmation, permission_key, fingerprint, confirm_token);
 
     if (permission.verdict == PermissionVerdict::Denied ||
         permission.verdict == PermissionVerdict::BadConfirmToken) {

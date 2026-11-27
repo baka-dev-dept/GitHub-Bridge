@@ -26,6 +26,11 @@ struct ToolSafety {
     bool requires_confirmation = false;
     // 配置开关名，对应 permissions 配置里的字段；空表示没有独立开关（读操作）。
     std::string permission_key;
+
+    // 按参数动态决定权限键的工具（如 GraphQL 的 query 里可能含 mutation）用它覆盖
+    // 静态 permission_key。返回空串表示沿用静态值。
+    using PermissionKeyResolver = std::string (*)(const std::string& arguments_json);
+    PermissionKeyResolver resolve_permission_key = nullptr;
 };
 
 struct ToolAnnotations {
