@@ -2,7 +2,7 @@
 
 本机 MCP Server（stdio），让 AI Agent 能调 GitHub API，而**永远拿不到 Personal Access Token**。
 
-Windows 11 x64 · C++20 · Visual Studio 2026 · MCP 规范固定 `2024-11-05`
+**Windows 11 x64 + Linux** · C++20 · MSVC / GCC · MCP 规范固定 `2024-11-05`
 
 **35 个工具 · 31 个 GitHub API 端点全部实现 · 76 条单元测试通过**
 
@@ -168,24 +168,66 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 - `github_get_file_content` 同时返回 `sha`，更新或删除文件时要用。
 - `github_graphql` 会检查 200 响应里的 `errors` 数组——GitHub 查询失败常返回 200。
 
+## 平台支持
+
+| 平台 | 状态 | 编译 | 传输层 | 令牌加密 | 文件权限 |
+|---|---|---|---|---|---|
+| **Windows 11 x64** | ✅ 已验证 | MSVC v145 / CMake | WinHTTP | DPAPI | DACL（仅当前用户 SID） |
+| **Linux x64** | ✅ 已验证 | GCC 15 + CMake | libcurl | libsodium | `0600` / `0700` |
+| macOS | ⬜ 未实现 | — | — | — | — |
+
+> **Linux 上的安全强度低于 Windows，这是真实的降级，不是实现疏忽。**
+>
+> DPAPI 的密钥由系统托管并绑定当前用户，同机同账号的其他进程在没有第二因子时也解不开。
+> Linux 没有等价机制，密钥必须能从 `/etc/machine-id` + 编译期常量重新算出来
+> （否则重启就解不开自己的令牌）。因此它**防的是「文件被拷到别的机器」**，
+> **防不住同机同用户的其他进程**。介意的话请只把令牌存在 Windows 侧。
+
 ## 构建
 
+### Windows
+
 需要 Visual Studio 2026（含 MSVC v145 工具集与 Windows SDK）与 `nlohmann/json`（已 vendored 在 `third_party/`，无需联网）。
-
-```powershell
-# 用 VS 打开 GitHub-Bridge.slnx 直接构建，或使用 MSBuild 完整路径（msbuild 通常不在 PATH）：
-& "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" `
-    GitHub-Bridge.slnx -p:Configuration=Release -p:Platform=x64 -nologo
-```
-
-产物：`x64\Release\GitHub-Bridge.exe`（输出目录基于解决方案根，中间文件在 `x64\out\<工程名>\Release\`）。
 
 ```powershell
 # 推荐用 build.ps1：它先净化环境（见下），再调 MSBuild
 .\build.ps1 -Configuration Release -Platform x64
 ```
 
+产物：`x64\Release\GitHub-Bridge.exe`（输出目录基于解决方案根，中间文件在 `x64\out\<工程名>\Release\`）。
+
 > **`MSB6001` 的成因**：MSBuild 的 ToolTask 内部用大小写敏感的字典装环境变量，遇到 `HTTP_PROXY` 与 `http_proxy` 这类仅大小写不同的键会直接抛异常。常见于配置了代理的机器。`build.ps1` 会合并 Machine/User/Process 三层环境、按小写去重并剔除代理变量，从根上避开。
+
+也可以走 CMake（与 vcxproj 并存，二者互不干扰）：
+
+```powershell
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+```
+
+### Linux
+
+```bash
+sudo apt install g++ cmake make libcurl4-openssl-dev libsodium-dev
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+./build/GitHub-Bridge          # 主程序
+./build/ghb_tests              # 单元测试
+```
+
+令牌与配置存放位置遵循 XDG：`$XDG_CONFIG_HOME/GitHub-Bridge`（缺省 `~/.config/GitHub-Bridge`）。
+
+### 跨平台架构
+
+平台差异被收在三个接口里，业务代码不写 `#ifdef`：
+
+| 接口 | 头文件 | Windows | Linux |
+|---|---|---|---|
+| `IHttpTransport` | `Platform/HttpTransport.h` | `platform/windows/WinHttpTransport.cpp` | `platform/linux/CurlTransport.cpp` |
+| `ITokenVault` | `Platform/TokenVault.h` | `platform/windows/DpapiVault.cpp` | `platform/linux/SodiumVault.cpp` |
+| `IPlatform` | `Platform/Platform.h` | `platform/windows/WindowsPlatform.cpp` | `platform/linux/LinuxPlatform.cpp` |
+
+`IPlatform` 提供随机数、安全清零、睡眠、机器标识、数据目录、权限收紧。
 
 ## 单元测试
 
@@ -434,15 +476,17 @@ GitHub-Bridge/
 │   ├── Types/      公共契约：RPC 消息、工具元数据、GitHub 响应、权限、安全（7）
 │   ├── MCP/        JSON-RPC 编解码 + stdio 行分帧传输（2）
 │   ├── Core/       工具注册表、请求分派、内建/令牌/GitHub 工具（5）
-│   ├── Security/   DPAPI 存储、令牌管理、权限与确认票据（3）
+│   ├── Security/   密文存储、令牌管理、权限与确认票据（3）
 │   ├── Cache/      GET 响应的 ETag 缓存（LRU，64 条上限）（1）
-│   ├── GitHub/     WinHTTP 传输、REST 语义层、限流跟踪、GraphQL 守卫（4）
+│   ├── GitHub/     REST 语义层、限流跟踪、GraphQL 守卫（3）
+│   ├── Platform/   传输、加解密、系统能力三组跨平台接口（3）
 │   └── Utils/      日志（仅 stderr + 脱敏）（1）
-├── src/            与 include 一一对应的实现（17 个 .cpp）
+├── src/            与 include 对应的实现 + platform/{windows,linux}/
 ├── third_party/    nlohmann/json 3.12.0（vendored）
 ├── GitHub-Bridge/          主程序工程
 ├── GitHub-Bridge.Tests/    单元测试工程（76 条用例）
-├── build.ps1               净化环境后调 MSBuild（规避 MSB6001）
+├── build.ps1               Windows：净化环境后调 MSBuild（规避 MSB6001）
+├── CMakeLists.txt          跨平台构建（Windows / Linux）
 └── GitHub-Bridge.slnx + GitHub-Bridge.settings.props
 ```
 

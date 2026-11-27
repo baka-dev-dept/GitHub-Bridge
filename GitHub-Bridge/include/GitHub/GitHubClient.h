@@ -1,6 +1,6 @@
 #pragma once
 
-#include "GitHub/WinHttpClient.h"
+#include "Platform/HttpTransport.h"
 #include "Types/GitHubResponse.h"
 
 #include <map>

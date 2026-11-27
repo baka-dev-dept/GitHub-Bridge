@@ -1,9 +1,15 @@
 #include "Security/PermissionManager.h"
 
+// MSVC 的 SDL 检查会拦 fopen/getenv 这类标准函数（报 C4996）。这里路径来自
+// 平台目录拼接、不含外部输入，用标准库函数更利于跨平台，故显式关掉该告警。
+#ifdef _WIN32
+#pragma warning(disable : 4996)
+#endif
+
+#include "Platform/Platform.h"
+
 #include "Utils/Logger.h"
 
-#include <windows.h>
-#include <bcrypt.h>
 
 #include <nlohmann/json.hpp>
 
@@ -24,18 +30,16 @@ int64_t NowMs() {
 // 票据 token 必须不可预测：用系统 CSPRNG，而不是 rand() 或时间戳。
 // 可预测的 token 等于没有二次确认——Agent 可以自己猜出来。
 std::string RandomToken() {
-    BYTE buffer[16] = {};
-    // BCryptGenRandom 返回 NTSTATUS，成功是 0；写成 !调用 会把成功当失败。
-    const NTSTATUS status = BCryptGenRandom(nullptr, buffer, sizeof(buffer), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-    if (status != 0) {
+    unsigned char buffer[16] = {};
+    if (!platform::Get()->RandomBytes(buffer, sizeof(buffer))) {
         // 取不到随机数时不能退化成弱随机：宁可让本次确认失败，也不发一个可猜的票据。
-        Logger::Get()->Error("生成确认票据失败：CSPRNG 不可用，NTSTATUS=0x" + std::to_string(static_cast<unsigned long>(status)));
+        Logger::Get()->Error("生成确认票据失败：CSPRNG 不可用");
         return {};
     }
     static constexpr char kHex[] = "0123456789abcdef";
     std::string out;
     out.reserve(sizeof(buffer) * 2);
-    for (const BYTE byte : buffer) {
+    for (const unsigned char byte : buffer) {
         out.push_back(kHex[byte >> 4]);
         out.push_back(kHex[byte & 0x0F]);
     }
@@ -43,11 +47,13 @@ std::string RandomToken() {
 }
 
 std::string ConfigFilePath() {
-    char expanded[MAX_PATH] = {};
-    if (ExpandEnvironmentStringsA("%APPDATA%", expanded, MAX_PATH) == 0) {
+    // 目录解析统一交给 IPlatform，避免每处各写一遍。
+    // Windows 上是 %APPDATA%，Linux 上是 $XDG_CONFIG_HOME 或 ~/.config。
+    const std::string dir = platform::Get()->AppDataDir();
+    if (dir.empty()) {
         return {};
     }
-    return std::string(expanded) + "\\GitHub-Bridge\\permissions.json";
+    return dir + "/permissions.json";
 }
 
 } // namespace
@@ -65,8 +71,8 @@ void PermissionManager::LoadConfig() {
         return;
     }
 
-    std::FILE* file = nullptr;
-    if (fopen_s(&file, path.c_str(), "rb") != 0 || file == nullptr) {
+    std::FILE* file = std::fopen(path.c_str(), "rb");
+    if (file == nullptr) {
         Logger::Get()->Warn("权限配置无法读取，使用默认值: " + path);
         return;
     }

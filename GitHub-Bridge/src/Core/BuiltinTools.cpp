@@ -18,7 +18,12 @@ namespace {
 std::string HandleServerInfo(const std::string&) {
     std::time_t now = std::time(nullptr);
     std::tm utc{};
+#ifdef _WIN32
     gmtime_s(&utc, &now);
+#else
+    // POSIX 的 gmtime_r 参数顺序相反，返回值也不同；不能直接给 gmtime_s 换名。
+    gmtime_r(&now, &utc);
+#endif
     char stamp[32] = {};
     std::strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%SZ", &utc);
 

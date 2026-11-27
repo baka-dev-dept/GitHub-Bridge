@@ -725,7 +725,7 @@ std::string HandleDeleteFile(const std::string& arguments_json) {
         return failure;
     }
 
-    // contents 接口的删除是 DELETE + 请求体，WinHttpClient 已支持带正文。
+    // contents 接口的删除是 DELETE + 请求体，传输层已支持带正文。
     nlohmann::json payload = {
         {"message", args.contains("message") && args["message"].is_string() ? args["message"].get<std::string>() : "Delete " + path},
         {"sha", sha},

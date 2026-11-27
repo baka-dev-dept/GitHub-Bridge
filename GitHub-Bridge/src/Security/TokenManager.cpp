@@ -1,10 +1,10 @@
 #include "Security/TokenManager.h"
 
+#include "Platform/Platform.h"
 #include "Utils/Logger.h"
 
 #include <nlohmann/json.hpp>
 
-#include <windows.h>
 
 #include <chrono>
 #include <algorithm>
@@ -51,7 +51,7 @@ void SecureErase(std::string* text) {
     if (text == nullptr || text->empty()) {
         return;
     }
-    SecureZeroMemory(text->data(), text->size());
+    platform::Get()->SecureZero(&(*text)[0], text->size());
     text->clear();
 }
 

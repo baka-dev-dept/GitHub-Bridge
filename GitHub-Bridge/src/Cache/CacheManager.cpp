@@ -2,19 +2,25 @@
 
 #include "Utils/Logger.h"
 
-#include <windows.h>
+#include <cstdlib>
+
+#ifdef _WIN32
+// MSVC 对 getenv 报 C4996（SDL 检查），但它只读环境变量，没有溢出风险。
+#pragma warning(disable : 4996)
+#endif
+#include <cstring>
+
 
 namespace ghb {
 
 bool CacheManager::Enabled() {
     // 只认 "0"，其余（含未设置）都按开启处理：缓存对调用方透明，
     // 默认关掉反而不符合预期。
-    char buffer[8] = {};
-    const DWORD written = GetEnvironmentVariableA("GHB_CACHE", buffer, sizeof(buffer));
-    if (written == 0 || written >= sizeof(buffer)) {
+    const char* raw = std::getenv("GHB_CACHE");
+    if (raw == nullptr) {
         return true;
     }
-    return !(buffer[0] == '0' && buffer[1] == '\0');
+    return !(raw[0] == '0' && raw[1] == '\0');
 }
 
 std::string CacheManager::MakeKey(const std::string& method, const std::string& path, const std::string& auth_scope) {

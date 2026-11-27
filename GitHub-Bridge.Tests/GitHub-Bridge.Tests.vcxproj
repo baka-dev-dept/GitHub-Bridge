@@ -97,7 +97,9 @@
     <ClCompile Include="..\GitHub-Bridge\src\GitHub\RateLimiter.cpp" />
     <ClCompile Include="..\GitHub-Bridge\src\GitHub\GraphQLGuard.cpp" />
     <ClCompile Include="..\GitHub-Bridge\src\GitHub\GitHubClient.cpp" />
-    <ClCompile Include="..\GitHub-Bridge\src\GitHub\WinHttpClient.cpp" />
+    <ClCompile Include="..\GitHub-Bridge\src\platform\windows\WinHttpTransport.cpp" />
+    <ClCompile Include="..\GitHub-Bridge\src\platform\windows\WindowsPlatform.cpp" />
+    <ClCompile Include="..\GitHub-Bridge\src\platform\windows\DpapiVault.cpp" />
     <ClCompile Include="..\GitHub-Bridge\src\Security\PermissionManager.cpp" />
     <ClCompile Include="..\GitHub-Bridge\src\Core\ToolRegistry.cpp" />
     <ClCompile Include="..\GitHub-Bridge\src\Cache\CacheManager.cpp" />

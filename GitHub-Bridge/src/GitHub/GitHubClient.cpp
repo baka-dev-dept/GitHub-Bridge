@@ -1,13 +1,13 @@
 #include "GitHub/GitHubClient.h"
 
 #include "Cache/CacheManager.h"
+#include "Platform/HttpTransport.h"
+#include "Platform/Platform.h"
 #include "GitHub/RateLimiter.h"
-#include "GitHub/WinHttpClient.h"
 #include "Utils/Logger.h"
 
 #include <nlohmann/json.hpp>
 
-#include <windows.h>
 
 #include <chrono>
 #include <cstdio>
@@ -34,8 +34,8 @@ int64_t NowMs() {
     return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
-void SleepMs(DWORD ms) {
-    Sleep(ms);
+void SleepMs(int ms) {
+    platform::Get()->SleepMs(ms);
 }
 
 std::string HeaderValue(const std::map<std::string, std::string>& headers, const char* name) {
@@ -143,7 +143,7 @@ GitHubResponse GitHubClient::Request(const std::string& method, const std::strin
         const int64_t pending = RateLimiter::Get()->WaitBeforeMs(NowMs());
         if (pending > 0 && pending <= RateLimiter::kMaxAutoWaitMs) {
             Logger::Get()->Info("限流窗口内，等待 " + std::to_string(pending) + "ms 后重试");
-            SleepMs(static_cast<DWORD>(pending));
+            SleepMs(pending);
         }
     }
 
@@ -187,7 +187,7 @@ GitHubResponse GitHubClient::Request(const std::string& method, const std::strin
             if (wait_ms > 0 && wait_ms <= RateLimiter::kMaxAutoWaitMs) {
                 rate_limit_retried = true;
                 Logger::Get()->Info("触发限流，等待 " + std::to_string(wait_ms) + "ms 后重试一次");
-                SleepMs(static_cast<DWORD>(wait_ms));
+                SleepMs(wait_ms);
                 continue;
             }
             break;
@@ -205,7 +205,7 @@ GitHubResponse GitHubClient::Request(const std::string& method, const std::strin
         ++transient_attempt;
         Logger::Get()->Warn(method + " " + path + " 失败（" + (response.error_kind == GitHubErrorKind::Server ? "Server" : "Transport") +
                             "），" + std::to_string(backoff) + "ms 后重试（" + std::to_string(transient_attempt) + "/" + std::to_string(kMaxTransientRetries) + "）");
-        SleepMs(static_cast<DWORD>(backoff));
+        SleepMs(backoff);
     }
 
     // 拿到新的 200 就刷新缓存；失败响应则清掉旧条目，避免下次拿到已失效内容。
@@ -255,7 +255,8 @@ HttpResponse GitHubClient::SendOnce(const std::string& method, const std::string
         request.headers.push_back({"Authorization", authorization});
     }
 
-    return WinHttpClient::Get()->Send(request);
+    static IHttpTransport* const transport = IHttpTransport::Create();
+    return transport->Send(request);
 }
 
 GitHubResponse GitHubClient::AnonymousGet(const std::string& path) {

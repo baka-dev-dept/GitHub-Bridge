@@ -3,13 +3,16 @@
 #include "Security/PermissionManager.h"
 #include "Utils/Logger.h"
 
+#include <cstdio>
+
+#ifdef _WIN32
+#include <io.h>
 #include <windows.h>
 
 #include <fcntl.h>
-#include <io.h>
 
-// stdio 必须切二进制模式：CRT 文本模式会把 \n 改写成 \r\n，
-// JSON-RPC 的换行分帧会当场错位，且报错信息与协议内容无关，极难定位。
+// stdio 必须切二进制模式：CRT 文本模式会把 \n 改写成 \r\n，JSON-RPC 的
+// 换行分帧会当场错位，且报错信息与协议内容无关，极难定位。
 // 必须在任何输出之前完成，包括日志。
 static void SetStdioBinaryMode() {
     _setmode(_fileno(stdin), _O_BINARY);
@@ -27,6 +30,14 @@ static void SetConsoleUtf8() {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 }
+#else
+
+// POSIX 上 stdin/stdout 本来就是二进制，也没有代码页概念，
+// 这两步在 Linux 上是空实现，保留函数是为了让 main 保持单一形态。
+static void SetStdioBinaryMode() {}
+static void SetConsoleUtf8() {}
+
+#endif
 
 int main(int argc, char** argv) {
     using namespace ghb;

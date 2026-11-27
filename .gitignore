@@ -13,3 +13,7 @@ Win32/
 # 杩愯鏈熸暟鎹細DPAPI 鍔犲瘑鐨?tokens.dat 涓庢棩蹇楋紝涓�寰嬩笉鍏ュ簱
 /out/
 *.log
+
+# 跨平台构建目录（CMake）
+build/
+build-linux/

@@ -6,7 +6,7 @@
 
 namespace ghb {
 
-// DPAPI 密文的读取结果。三类失败必须分开，因为补救方式完全不同：
+// 密文的读取结果。三类失败必须分开，因为补救方式完全不同：
 // NotFound 是首次运行，Corrupted 要重导，EntropyMismatch 是换了机器或用户。
 enum class TokenLoadStatus : int {
     Ok = 0,
@@ -16,8 +16,11 @@ enum class TokenLoadStatus : int {
     IoError = 4,
 };
 
-// 纯持久化层：只做 DPAPI 加解密、文件读写、ACL 收紧。
+// 纯持久化层：只做加解密调度、文件读写、权限收紧。
 // 不校验令牌有效性，不理解 GitHub API——那是 TokenManager 与 GitHubClient 的事。
+//
+// 加解密本身交给 ITokenVault（Windows 是 DPAPI，Linux 是 libsodium），
+// 本类只管「密文放在哪、怎么安全落盘」。
 class TokenStorage {
 public:
     static TokenStorage* Get() {
@@ -25,10 +28,10 @@ public:
         return &i;
     }
 
-    // 返回 %APPDATA%\GitHub-Bridge 下的文件与目录路径。
+    // 返回数据目录与文件路径。
     TokenStoragePaths ResolvePaths() const;
 
-    // 加密并原子写入。成功后收紧 ACL。
+    // 加密并原子写入。成功后收紧权限。
     bool Save(const std::string& plaintext, std::string* error_message);
 
     TokenLoadStatus Load(std::string* plaintext);
@@ -38,10 +41,6 @@ public:
 
     bool Exists() const;
 
-    // 由编译期常量与机器级数据派生的 DPAPI 第二因子。
-    // 若读不到 MachineGuid，降级为仅用编译期常量并记 Warn，不硬失败。
-    static std::string DeriveEntropy();
-
 private:
     TokenStorage() = default;
     ~TokenStorage() = default;
@@ -49,7 +48,6 @@ private:
     std::string DataFilePath() const;
     std::string AppDirPath() const;
     bool EnsureAppDir(std::string* error_message) const;
-    bool RestrictAcl(const std::string& path, std::string* error_message) const;
 };
 
 } // namespace ghb

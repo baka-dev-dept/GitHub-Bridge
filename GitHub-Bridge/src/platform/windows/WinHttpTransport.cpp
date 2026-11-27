@@ -1,4 +1,4 @@
-#include "GitHub/WinHttpClient.h"
+#include "Platform/HttpTransport.h"
 
 #include "Utils/Logger.h"
 
@@ -79,9 +79,14 @@ private:
     HINTERNET handle_ = nullptr;
 };
 
+class WinHttpTransport : public IHttpTransport {
+public:
+    HttpResponse Send(const HttpRequest& request) const override;
+};
+
 } // namespace
 
-HttpResponse WinHttpClient::Send(const HttpRequest& request) const {
+HttpResponse WinHttpTransport::Send(const HttpRequest& request) const {
     HttpResponse response;
 
     InternetHandle session(WinHttpOpen(L"GitHub-Bridge/0.1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
@@ -199,6 +204,10 @@ HttpResponse WinHttpClient::Send(const HttpRequest& request) const {
         Logger::Get()->Warn("响应体超过 10MiB 上限，已截断: " + request.path);
     }
     return response;
+}
+
+IHttpTransport* IHttpTransport::Create() {
+    return new WinHttpTransport();
 }
 
 } // namespace ghb

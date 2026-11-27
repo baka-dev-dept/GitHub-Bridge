@@ -159,8 +159,10 @@
     <ClCompile Include="src\GitHub\GitHubClient.cpp" />
     <ClCompile Include="src\GitHub\RateLimiter.cpp" />
     <ClCompile Include="src\GitHub\GraphQLGuard.cpp" />
+    <ClCompile Include="src\platform\windows\WinHttpTransport.cpp" />
+    <ClCompile Include="src\platform\windows\WindowsPlatform.cpp" />
+    <ClCompile Include="src\platform\windows\DpapiVault.cpp" />
     <ClCompile Include="src\Cache\CacheManager.cpp" />
-    <ClCompile Include="src\GitHub\WinHttpClient.cpp" />
     <ClCompile Include="src\Core\GitHubTools.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -185,7 +187,9 @@
     <ClInclude Include="include\GitHub\RateLimiter.h" />
     <ClInclude Include="include\GitHub\GraphQLGuard.h" />
     <ClInclude Include="include\Cache\CacheManager.h" />
-    <ClInclude Include="include\GitHub\WinHttpClient.h" />
+    <ClInclude Include="include\Platform\HttpTransport.h" />
+    <ClInclude Include="include\Platform\Platform.h" />
+    <ClInclude Include="include\Platform\TokenVault.h" />
     <ClInclude Include="include\Core\GitHubTools.h" />
   </ItemGroup>
   <ItemGroup>
