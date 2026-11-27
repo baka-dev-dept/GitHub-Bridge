@@ -34,30 +34,30 @@ GitHubGateway 走 **GitHub REST / GraphQL API**，不经过 git 协议，也不�
 - [x] Visual Studio 2022
 - [x] 本地 MCP Server
 - [x] MCP stdio 通信架构
-- [ ] MCP JSON-RPC 完整协议实现
-- [ ] MCP Tool 自动注册与分发
+- [x] MCP JSON-RPC 完整协议实现
+- [x] MCP Tool 自动注册与分发
 
 ### Security
 
-- [ ] Windows DPAPI Token 加密存储（含 `pOptionalEntropy` 第二因子）
-- [ ] Token 自动加载
-- [ ] Token 状态检查（实际调用 API 校验，而非仅读配置）
-- [ ] Token 不暴露给 AI Agent
-- [ ] 敏感信息脱敏
-- [ ] 操作权限管理
-- [ ] 危险操作独立授权开关 + 运行时二次确认
+- [x] Windows DPAPI Token 加密存储（含 `pOptionalEntropy` 第二因子）
+- [x] Token 自动加载
+- [x] Token 状态检查（实际调用 API 校验，而非仅读配置）
+- [x] Token 不暴露给 AI Agent
+- [x] 敏感信息脱敏
+- [x] 操作权限管理
+- [x] 危险操作独立授权开关 + 运行时二次确认
 
 ### GitHub Integration
 
-- [ ] GitHub REST API
-- [ ] GitHub GraphQL API
-- [ ] 仓库查询与管理
-- [ ] 文件读取与写入
-- [ ] Issue 管理
-- [ ] Pull Request 管理
-- [ ] Branch 管理
-- [ ] Release 管理
-- [ ] API Rate Limit 查询
+- [x] GitHub REST API
+- [x] GitHub GraphQL API
+- [x] 仓库查询与管理
+- [x] 文件读取与写入
+- [x] Issue 管理
+- [x] Pull Request 管理
+- [x] Branch 管理
+- [x] Release 管理
+- [x] API Rate Limit 查询
 
 > 当前 README 描述的是项目设计目标。尚未实现的功能不会被视为已交付功能。
 
@@ -679,43 +679,43 @@ AI Agent 只能调用已注册的 MCP Tools，不能直接访问 Token 存储。
 
 ### Phase 1 — Core
 
-- [ ] CMake 项目结构
-- [ ] MCP stdio Transport
-- [ ] MCP JSON-RPC Protocol
-- [ ] MCP Initialize
-- [ ] Tool Registry
-- [ ] Tool Dispatcher
-- [ ] Logger
+- [x] CMake 项目结构
+- [x] MCP stdio Transport
+- [x] MCP JSON-RPC Protocol
+- [x] MCP Initialize
+- [x] Tool Registry
+- [x] Tool Dispatcher
+- [x] Logger
 
 ### Phase 2 — Security
 
-- [ ] DPAPI Token Storage
-- [ ] Token Manager
-- [ ] Token Status
-- [ ] Permission Manager
-- [ ] Sensitive Data Protection
+- [x] DPAPI Token Storage
+- [x] Token Manager
+- [x] Token Status
+- [x] Permission Manager
+- [x] Sensitive Data Protection
 
 ### Phase 3 — GitHub API
 
-- [ ] WinHTTP Client
-- [ ] GitHub Authentication
-- [ ] Repository API
-- [ ] File API
-- [ ] Issue API
-- [ ] Branch API
-- [ ] Pull Request API
-- [ ] Release API
-- [ ] Rate Limit API
+- [x] WinHTTP Client
+- [x] GitHub Authentication
+- [x] Repository API
+- [x] File API
+- [x] Issue API
+- [x] Branch API
+- [x] Pull Request API
+- [x] Release API
+- [x] Rate Limit API
 
 ### Phase 4 — Advanced
 
-- [ ] GraphQL API
-- [ ] Cache Manager
-- [ ] Request Retry
-- [ ] Rate Limit Handling
+- [x] GraphQL API
+- [x] Cache Manager
+- [x] Request Retry
+- [x] Rate Limit Handling
 - [ ] Batch Operations
 - [ ] Advanced Permission Rules
-- [ ] Unit Tests
+- [x] Unit Tests
 
 ---
 

@@ -46,7 +46,7 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 | 响应缓存 | ✅ 已实现（ETag 条件请求） |
 | 多令牌 profile | ✅ 已实现（命名 + 显式切换） |
 | 单元测试工程 | ✅ 已实现，**76 条用例** |
-| CMake 工程 | ⬜ 未实现（仅 MSBuild） |
+| CMake 工程 | ✅ 已实现（Windows / Linux） |
 
 ## 工具清单（35 个）
 
