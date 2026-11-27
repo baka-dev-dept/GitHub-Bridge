@@ -193,6 +193,20 @@ std::string UrlEncodePathSegment(const std::string& text) {
     return out;
 }
 
+// GitHub 对可选文本字段常返回显式 null（issue 无正文、仓库无描述等）。
+// nlohmann 的 value() 只在字段缺失时用默认值，字段存在但为 null 会抛异常，
+// 所以必须显式判断 is_string，否则工具会以 -32603 崩溃。
+std::string SafeString(const nlohmann::json& object, const char* key) {
+    if (!object.is_object()) {
+        return {};
+    }
+    const auto it = object.find(key);
+    if (it == object.end() || !it->is_string()) {
+        return {};
+    }
+    return it->get<std::string>();
+}
+
 std::string HandleGetUser(const std::string&) {
     TokenHandle handle = TokenManager::Get()->AcquireHandle();
     if (!handle.configured) {
@@ -216,9 +230,9 @@ std::string HandleGetUser(const std::string&) {
 
     return nlohmann::json{
         {"ok", true},
-        {"login", body.value("login", "")},
+        {"login", SafeString(body, "login")},
         {"id", body.value("id", static_cast<long long>(0))},
-        {"name", body.value("name", "")},
+        {"name", SafeString(body, "name")},
         {"type", body.value("type", "")},
         {"scopes", response.headers.oauth_scopes},
         {"request_id", response.headers.request_id},
@@ -314,7 +328,7 @@ std::string HandleSearchRepositories(const std::string& arguments_json) {
             }
             items.push_back({
                 {"full_name", item.value("full_name", "")},
-                {"description", item.value("description", "")},
+                {"description", SafeString(item, "description")},
                 {"private", item.value("private", false)},
                 {"html_url", item.value("html_url", "")},
                 {"default_branch", item.value("default_branch", "")},
@@ -360,7 +374,7 @@ std::string HandleGetRepository(const std::string& arguments_json) {
     return nlohmann::json{
         {"ok", true},
         {"full_name", body.value("full_name", "")},
-        {"description", body.value("description", "")},
+        {"description", SafeString(body, "description")},
         {"private", body.value("private", false)},
         {"html_url", body.value("html_url", "")},
         {"default_branch", body.value("default_branch", "")},
@@ -459,7 +473,7 @@ std::string HandleUpdateRepository(const std::string& arguments_json) {
     return nlohmann::json{
         {"ok", true},
         {"full_name", body.value("full_name", "")},
-        {"description", body.value("description", "")},
+        {"description", SafeString(body, "description")},
         {"private", body.value("private", false)},
     }.dump();
 }
@@ -539,7 +553,7 @@ std::string HandleGetFile(const std::string& arguments_json) {
         {"sha", body.value("sha", "")},
         {"size", body.value("size", 0)},
         {"encoding", body.value("encoding", "")},
-        {"download_url", body.contains("download_url") && body["download_url"].is_string() ? body["download_url"] : ""},
+        {"download_url", SafeString(body, "download_url")},
     }.dump();
 }
 
@@ -700,7 +714,7 @@ nlohmann::json ProjectIssue(const nlohmann::json& item) {
     // 带 pull_request 字段说明它是 PR 不是 Issue：GitHub 的 issues 接口两者混返。
     return {
         {"number", item.value("number", 0)},
-        {"title", item.value("title", "")},
+        {"title", SafeString(item, "title")},
         {"state", item.value("state", "")},
         {"html_url", item.value("html_url", "")},
         {"is_pull_request", item.contains("pull_request")},
@@ -784,9 +798,9 @@ std::string HandleGetIssue(const std::string& arguments_json) {
     return nlohmann::json{
         {"ok", true},
         {"number", body.value("number", 0)},
-        {"title", body.value("title", "")},
+        {"title", SafeString(body, "title")},
         {"state", body.value("state", "")},
-        {"body", body.value("body", "")},
+        {"body", SafeString(body, "body")},
         {"html_url", body.value("html_url", "")},
         {"is_pull_request", body.contains("pull_request")},
     }.dump();
@@ -958,7 +972,7 @@ std::string HandleListBranches(const std::string& arguments_json) {
             continue;
         }
         const nlohmann::json commit = item.contains("commit") && item["commit"].is_object() ? item["commit"] : nlohmann::json::object();
-        items.push_back({{"name", item.value("name", "")}, {"sha", commit.value("sha", "")}, {"protected", item.value("protected", false)}});
+        items.push_back({{"name", SafeString(item, "name")}, {"sha", commit.value("sha", "")}, {"protected", item.value("protected", false)}});
     }
     return nlohmann::json{{"ok", true}, {"count", items.size()}, {"items", items}}.dump();
 }
@@ -996,7 +1010,7 @@ std::string HandleGetBranch(const std::string& arguments_json) {
     const nlohmann::json commit = body.contains("commit") && body["commit"].is_object() ? body["commit"] : nlohmann::json::object();
     return nlohmann::json{
         {"ok", true},
-        {"name", body.value("name", "")},
+        {"name", SafeString(body, "name")},
         {"sha", commit.value("sha", "")},
         {"protected", body.value("protected", false)},
     }.dump();
@@ -1077,7 +1091,7 @@ nlohmann::json ProjectPullRequest(const nlohmann::json& item) {
     const nlohmann::json base = item.contains("base") && item["base"].is_object() ? item["base"] : nlohmann::json::object();
     return {
         {"number", item.value("number", 0)},
-        {"title", item.value("title", "")},
+        {"title", SafeString(item, "title")},
         {"state", item.value("state", "")},
         {"merged", item.value("merged", false)},
         {"head", head.value("ref", "")},
@@ -1161,7 +1175,7 @@ std::string HandleGetPullRequest(const std::string& arguments_json) {
 
     nlohmann::json result = ProjectPullRequest(body);
     result["ok"] = true;
-    result["body"] = body.value("body", "");
+    result["body"] = SafeString(body, "body");
     result["mergeable"] = body.value("mergeable", false);
     result["merged_at"] = body.contains("merged_at") && body["merged_at"].is_string() ? body["merged_at"] : "";
     return result.dump();
@@ -1308,7 +1322,7 @@ std::string HandleMergePullRequest(const std::string& arguments_json) {
     return nlohmann::json{
         {"ok", true},
         {"merged", body.value("merged", false)},
-        {"message", body.value("message", "")},
+        {"message", SafeString(body, "message")},
         {"sha", body.value("sha", "")},
     }.dump();
 }
@@ -1318,8 +1332,8 @@ std::string HandleMergePullRequest(const std::string& arguments_json) {
 nlohmann::json ProjectRelease(const nlohmann::json& item) {
     return {
         {"id", item.value("id", static_cast<long long>(0))},
-        {"tag_name", item.value("tag_name", "")},
-        {"name", item.value("name", "")},
+        {"tag_name", SafeString(item, "tag_name")},
+        {"name", SafeString(item, "name")},
         {"draft", item.value("draft", false)},
         {"prerelease", item.value("prerelease", false)},
         {"html_url", item.value("html_url", "")},
@@ -1394,8 +1408,8 @@ std::string HandleGetRelease(const std::string& arguments_json) {
     }
     nlohmann::json result = ProjectRelease(body);
     result["ok"] = true;
-    result["body"] = body.value("body", "");
-    result["target_commitish"] = body.value("target_commitish", "");
+    result["body"] = SafeString(body, "body");
+    result["target_commitish"] = SafeString(body, "target_commitish");
     return result.dump();
 }
 
@@ -1499,7 +1513,7 @@ std::string HandleUpdateRelease(const std::string& arguments_json) {
     if (!ParseObject(response, &body, &failure)) {
         return failure;
     }
-    return nlohmann::json{{"ok", true}, {"id", body.value("id", static_cast<long long>(0))}, {"tag_name", body.value("tag_name", "")}}.dump();
+    return nlohmann::json{{"ok", true}, {"id", body.value("id", static_cast<long long>(0))}, {"tag_name", SafeString(body, "tag_name")}}.dump();
 }
 
 // ===== GraphQL =====
