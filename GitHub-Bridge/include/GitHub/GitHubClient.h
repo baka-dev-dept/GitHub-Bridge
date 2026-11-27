@@ -42,12 +42,23 @@ public:
     static constexpr const char* kApiVersion = "2022-11-28";
     static constexpr const char* kUserAgent = "GitHub-Bridge/0.1.0";
 
+    // 暂时性故障的重试上限。MCP 调用是同步阻塞的，重试太多会把一次调用
+    // 拖到几十秒，比直接失败还难受，所以只给两次。
+    static constexpr int kMaxTransientRetries = 2;
+
+    // 退避间隔：第一次 500ms，第二次 1500ms。
+    static constexpr int kBackoffMs[] = {500, 1500};
+
 private:
     GitHubClient() = default;
     ~GitHubClient() = default;
 
     // 发一次请求，不含限流等待与重试。重试逻辑在 Request 里，避免递归。
     HttpResponse SendOnce(const std::string& method, const std::string& path, const std::string& body, const std::string& authorization);
+
+    // 这个错误值不值得重发：只有传输层失败与服务端 5xx 是暂时性的。
+    // 凭据、权限、参数类错误重发也不会变。
+    static bool IsRetryable(GitHubErrorKind kind);
 
     static GitHubResponse Classify(int status, const std::string& body, const std::map<std::string, std::string>& headers);
 };
