@@ -435,12 +435,13 @@ GitHub-Bridge/
 │   ├── MCP/        JSON-RPC 编解码 + stdio 行分帧传输（2）
 │   ├── Core/       工具注册表、请求分派、内建/令牌/GitHub 工具（5）
 │   ├── Security/   DPAPI 存储、令牌管理、权限与确认票据（3）
+│   ├── Cache/      GET 响应的 ETag 缓存（LRU，64 条上限）（1）
 │   ├── GitHub/     WinHTTP 传输、REST 语义层、限流跟踪、GraphQL 守卫（4）
 │   └── Utils/      日志（仅 stderr + 脱敏）（1）
-├── src/            与 include 一一对应的实现（16 个 .cpp）
+├── src/            与 include 一一对应的实现（17 个 .cpp）
 ├── third_party/    nlohmann/json 3.12.0（vendored）
 ├── GitHub-Bridge/          主程序工程
-├── GitHub-Bridge.Tests/    单元测试工程（59 条用例）
+├── GitHub-Bridge.Tests/    单元测试工程（76 条用例）
 ├── build.ps1               净化环境后调 MSBuild（规避 MSB6001）
 └── GitHub-Bridge.slnx + GitHub-Bridge.settings.props
 ```
