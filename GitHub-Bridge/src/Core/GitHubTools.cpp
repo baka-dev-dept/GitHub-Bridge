@@ -309,6 +309,7 @@ std::string HandleRateLimit(const std::string&) {
         {"remaining", core.value("remaining", 0)},
         {"reset_at", core.value("reset", static_cast<long long>(0))},
         {"resources", resources},
+        {"from_cache", response.from_cache},
     }.dump();
 }
 

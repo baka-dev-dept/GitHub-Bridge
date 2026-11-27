@@ -61,7 +61,8 @@ private:
     ~GitHubClient() = default;
 
     // 发一次请求，不含限流等待与重试。重试逻辑在 Request 里，避免递归。
-    HttpResponse SendOnce(const std::string& method, const std::string& path, const std::string& body, const std::string& authorization);
+    // if_none_match 非空时作为条件请求发送。
+    HttpResponse SendOnce(const std::string& method, const std::string& path, const std::string& body, const std::string& authorization, const std::string& if_none_match);
 };
 
 } // namespace ghb

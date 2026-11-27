@@ -86,6 +86,7 @@
     <ClCompile Include="PermissionTests.cpp" />
     <ClCompile Include="ToolRegistryTests.cpp" />
     <ClCompile Include="GraphQLGuardTests.cpp" />
+    <ClCompile Include="CacheManagerTests.cpp" />
     <ClInclude Include="TestFramework.h" />
   </ItemGroup>
 
@@ -98,6 +99,7 @@
     <ClCompile Include="..\GitHub-Bridge\src\GitHub\WinHttpClient.cpp" />
     <ClCompile Include="..\GitHub-Bridge\src\Security\PermissionManager.cpp" />
     <ClCompile Include="..\GitHub-Bridge\src\Core\ToolRegistry.cpp" />
+    <ClCompile Include="..\GitHub-Bridge\src\Cache\CacheManager.cpp" />
     <ClCompile Include="..\GitHub-Bridge\src\Utils\Logger.cpp" />
   </ItemGroup>
 

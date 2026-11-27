@@ -24,6 +24,12 @@
     <Filter Include="源文件\GitHub">
       <UniqueIdentifier>{A1B2C3D4-0011-4000-8000-000000000011}</UniqueIdentifier>
     </Filter>
+    <Filter Include="源文件\Cache">
+      <UniqueIdentifier>{A1B2C3D4-0013-4000-8000-000000000013}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\Cache">
+      <UniqueIdentifier>{A1B2C3D4-0014-4000-8000-000000000014}</UniqueIdentifier>
+    </Filter>
     <Filter Include="头文件\GitHub">
       <UniqueIdentifier>{A1B2C3D4-0012-4000-8000-000000000012}</UniqueIdentifier>
     </Filter>
@@ -90,6 +96,9 @@
     <ClCompile Include="src\GitHub\RateLimiter.cpp">
     <ClCompile Include="src\GitHub\GraphQLGuard.cpp">
       <Filter>源文件\GitHub</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Cache\CacheManager.cpp">
+      <Filter>源文件\Cache</Filter>
     </ClCompile>
       <Filter>源文件\GitHub</Filter>
     </ClCompile>
@@ -158,6 +167,9 @@
     <ClInclude Include="include\GitHub\RateLimiter.h">
     <ClInclude Include="include\GitHub\GraphQLGuard.h">
       <Filter>头文件\GitHub</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Cache\CacheManager.h">
+      <Filter>头文件\Cache</Filter>
     </ClInclude>
       <Filter>头文件\GitHub</Filter>
     </ClInclude>

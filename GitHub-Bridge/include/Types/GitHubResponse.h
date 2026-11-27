@@ -33,6 +33,8 @@ struct GitHubHeaders {
     std::string oauth_scopes;
     std::string token_expires_at;
     std::string request_id;
+    // 内容版本标识。304 时 GitHub 也会带回，供缓存层更新判断。
+    std::string etag;
     RateLimitInfo rate_limit;
 };
 
@@ -46,6 +48,8 @@ struct GitHubResponse {
     // 成功时是响应正文；失败时是 GitHub 的 message 字段，便于 Agent 理解。
     std::string body;
     GitHubHeaders headers;
+    // true 表示内容来自本地缓存（服务端返回 304），不是本次新取的数据。
+    bool from_cache = false;
 
     static GitHubResponse MakeTransportError(const std::string& message) {
         GitHubResponse r;
@@ -53,6 +57,13 @@ struct GitHubResponse {
         r.error_message = message;
         return r;
     }
+};
+
+// 一条缓存内容：缓存的是响应本身，而不是单独存正文，
+// 这样命中 304 时能原样还原状态码、头与正文。
+struct CacheEntry {
+    std::string etag;
+    GitHubResponse response;
 };
 
 } // namespace ghb

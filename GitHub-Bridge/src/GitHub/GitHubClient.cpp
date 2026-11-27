@@ -1,5 +1,6 @@
 #include "GitHub/GitHubClient.h"
 
+#include "Cache/CacheManager.h"
 #include "GitHub/RateLimiter.h"
 #include "GitHub/WinHttpClient.h"
 #include "Utils/Logger.h"
@@ -9,10 +10,24 @@
 #include <windows.h>
 
 #include <chrono>
+#include <cstdio>
 
 namespace ghb {
 
 namespace {
+
+// 把授权头折成一个定长散列，只用来做缓存键的账号隔离。
+// 不是安全边界：目标是别把令牌原文留在内存的键里，也避免换账号串用缓存。
+std::string HmacLikeDigest(const std::string& text) {
+    uint64_t h = 1469598103934665603ULL;
+    for (const char c : text) {
+        h ^= static_cast<uint64_t>(static_cast<unsigned char>(c));
+        h *= 1099511628211ULL;
+    }
+    char buf[17] = {};
+    std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(h));
+    return std::string(buf);
+}
 
 int64_t NowMs() {
     using namespace std::chrono;
@@ -59,6 +74,7 @@ GitHubHeaders ExtractHeaders(const std::map<std::string, std::string>& headers) 
     out.rate_limit.limit = HeaderInt(headers, "x-ratelimit-limit");
     out.rate_limit.remaining = HeaderInt(headers, "x-ratelimit-remaining");
     out.rate_limit.reset_at = HeaderValue(headers, "x-ratelimit-reset");
+    out.etag = HeaderValue(headers, "etag");
     return out;
 }
 
@@ -115,6 +131,12 @@ GitHubResponse GitHubClient::Request(const std::string& method, const std::strin
     // PUT/DELETE 虽然本身幂等，但网络失败时无法确定服务端是否已执行，同样不重试。
     const bool idempotent = (method == "GET");
 
+    // 缓存只对 GET 生效。授权头用哈希入键，换账号不串用，也不在内存里留令牌原文。
+    const std::string cache_scope = authorization.empty() ? "anon" : HmacLikeDigest(authorization);
+    const std::string cache_key = CacheManager::MakeKey(method, path, cache_scope);
+    CacheEntry cached;
+    const bool cache_hit = idempotent && CacheManager::Get()->Lookup(cache_key, &cached);
+
     // 发送前先看已知状态：如果正处于限流窗口且剩余等待在可接受范围内，就先等。
     // 这样可以避免明知会失败还去撞一次配额。
     if (idempotent) {
@@ -128,19 +150,35 @@ GitHubResponse GitHubClient::Request(const std::string& method, const std::strin
     GitHubResponse response;
     int transient_attempt = 0;
     bool rate_limit_retried = false;
+    bool cache_validated = false;
 
     while (true) {
-        const HttpResponse http = SendOnce(method, path, body, authorization);
+        const std::string if_none_match = cache_hit ? cached.etag : std::string();
+        const HttpResponse http = SendOnce(method, path, body, authorization, if_none_match);
         if (http.TransportFailed()) {
             response = GitHubResponse::MakeTransportError(http.transport_error);
         } else {
             Logger::Get()->Debug(method + " " + path + " -> " + std::to_string(http.status));
             response = Classify(http.status, http.body, http.headers);
+            // 304 也带 X-RateLimit-*，而且实测同样计配额，必须照常记录。
             RateLimiter::Get()->Observe(response.headers, NowMs());
         }
 
         if (!idempotent) {
             break;
+        }
+
+        // 304 说明内容没变，直接用缓存副本。这是唯一允许回放缓存的分支，
+        // 其他状态一律以服务端返回为准，避免返回过期数据。
+        if (response.status == 304 && cache_hit) {
+            const GitHubResponse restored = cached.response;
+            if (if_none_match == cached.etag) {
+                cache_validated = true;
+                response = restored;
+                response.from_cache = true;
+                Logger::Get()->Debug("缓存命中: " + path);
+                break;
+            }
         }
 
         // 限流单独处理：等待时长由服务端 reset 决定，与退避序列无关，且只做一次。
@@ -170,6 +208,15 @@ GitHubResponse GitHubClient::Request(const std::string& method, const std::strin
         SleepMs(static_cast<DWORD>(backoff));
     }
 
+    // 拿到新的 200 就刷新缓存；失败响应则清掉旧条目，避免下次拿到已失效内容。
+    if (idempotent) {
+        if (response.ok && !response.from_cache) {
+            CacheManager::Get()->Store(cache_key, response.headers.etag, response);
+        } else if (!cache_validated && !response.ok) {
+            CacheManager::Get()->Remove(cache_key);
+        }
+    }
+
     if (idempotent && (transient_attempt > 0 || rate_limit_retried) && response.ok) {
         Logger::Get()->Info("重试后成功: " + method + " " + path);
     }
@@ -187,7 +234,7 @@ GitHubResponse GitHubClient::Request(const std::string& method, const std::strin
     return response;
 }
 
-HttpResponse GitHubClient::SendOnce(const std::string& method, const std::string& path, const std::string& body, const std::string& authorization) {
+HttpResponse GitHubClient::SendOnce(const std::string& method, const std::string& path, const std::string& body, const std::string& authorization, const std::string& if_none_match) {
     HttpRequest request;
     request.method = method;
     request.path = path;
@@ -199,6 +246,10 @@ HttpResponse GitHubClient::SendOnce(const std::string& method, const std::string
     // 带正文的写操作必须声明 JSON，否则 GitHub 会把 body 当成表单而报 400。
     if (!body.empty()) {
         request.headers.push_back({"Content-Type", "application/json"});
+    }
+    // 条件请求：内容未变时 GitHub 回 304 且无正文。注意 304 照样计配额。
+    if (!if_none_match.empty()) {
+        request.headers.push_back({"If-None-Match", if_none_match});
     }
     if (!authorization.empty()) {
         request.headers.push_back({"Authorization", authorization});
