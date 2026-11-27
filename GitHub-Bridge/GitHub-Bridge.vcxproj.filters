@@ -81,6 +81,9 @@
     <ClCompile Include="src\Security\TokenStorage.cpp">
       <Filter>源文件\Security</Filter>
     </ClCompile>
+    <ClCompile Include="src\Security\PermissionManager.cpp">
+      <Filter>源文件\Security</Filter>
+    </ClCompile>
     <ClCompile Include="src\GitHub\GitHubClient.cpp">
       <Filter>源文件\GitHub</Filter>
     </ClCompile>
@@ -138,6 +141,9 @@
       <Filter>头文件\Security</Filter>
     </ClInclude>
     <ClInclude Include="include\Security\TokenStorage.h">
+      <Filter>头文件\Security</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Security\PermissionManager.h">
       <Filter>头文件\Security</Filter>
     </ClInclude>
     <ClInclude Include="include\GitHub\GitHubClient.h">

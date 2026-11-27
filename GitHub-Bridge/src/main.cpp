@@ -1,5 +1,6 @@
 #include "Core/BuiltinTools.h"
 #include "Core/Gateway.h"
+#include "Security/PermissionManager.h"
 #include "Utils/Logger.h"
 
 #include <windows.h>
@@ -41,6 +42,9 @@ int main(int argc, char** argv) {
     config.echo_to_stderr = true;
     config.write_to_file = false;
     Logger::Get()->Configure(config);
+
+    // 权限配置必须在注册工具之后、处理请求之前加载。
+    PermissionManager::Get()->LoadConfig();
 
     RegisterBuiltinTools();
     return Gateway::Get()->Run();

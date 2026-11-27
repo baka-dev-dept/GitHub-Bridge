@@ -3,6 +3,7 @@
 #include "Core/ToolRegistry.h"
 #include "MCP/JsonCodec.h"
 #include "MCP/StdioTransport.h"
+#include "Security/PermissionManager.h"
 #include "Utils/Logger.h"
 
 #include <nlohmann/json.hpp>
@@ -159,6 +160,49 @@ std::string Gateway::HandleToolsCall(const RpcMessage& request) {
             return JsonCodec::EncodeError(request, MakeError(kJsonRpcInvalidParams, "Invalid params", "arguments 必须是对象"));
         }
         arguments = args_it->dump();
+    }
+
+    // 权限裁决必须在执行前完成，且对每个工具都走一遍：
+    // 按工具声明的 permission_key 查配置开关，不可逆操作还要求一次性确认票据。
+    std::string confirm_token;
+    {
+        const json parsed_args = json::parse(arguments, nullptr, false);
+        if (parsed_args.is_object()) {
+            const auto token_it = parsed_args.find("confirm_token");
+            if (token_it != parsed_args.end() && token_it->is_string()) {
+                confirm_token = token_it->get<std::string>();
+            }
+        }
+    }
+    const std::string fingerprint = PermissionManager::Fingerprint(tool_name, arguments);
+    const PermissionOutcome permission = PermissionManager::Get()->Check(
+        tool_name, registration->tool.safety.requires_confirmation, registration->tool.safety.permission_key,
+        fingerprint, confirm_token);
+
+    if (permission.verdict == PermissionVerdict::Denied ||
+        permission.verdict == PermissionVerdict::BadConfirmToken) {
+        const json denied = {
+            {"ok", false},
+            {"status", permission.verdict == PermissionVerdict::Denied ? "permission_denied" : "bad_confirm_token"},
+            {"reason", permission.reason},
+        };
+        return JsonCodec::EncodeResponse(request, json{{"content", json::array({{{"type", "text"}, {"text", denied.dump()}}})},
+                                                      {"isError", true}}
+                                                    .dump());
+    }
+
+    if (permission.verdict == PermissionVerdict::NeedConfirm) {
+        // 首次调用：不下发 status 为「已执行」，而是把票据交给 Agent，等它带着票据再来一次。
+        const json pending = {
+            {"ok", false},
+            {"status", "confirmation_required"},
+            {"confirm_token", permission.confirm_token},
+            {"expires_at_unix_ms", permission.expires_at_unix_ms},
+            {"reason", "这是不可逆操作，请携带相同的 arguments 再加上 confirm_token 字段重新调用"},
+        };
+        return JsonCodec::EncodeResponse(request, json{{"content", json::array({{{"type", "text"}, {"text", pending.dump()}}})},
+                                                       {"isError", false}}
+                                                     .dump());
     }
 
     std::string text;

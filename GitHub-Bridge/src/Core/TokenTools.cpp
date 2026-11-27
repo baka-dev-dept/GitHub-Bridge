@@ -182,7 +182,9 @@ void RegisterTokenTools() {
     clear.tool.annotations.open_world_hint = false;
     clear.tool.safety.kind = OperationKind::Delete;
     clear.tool.safety.requires_confirmation = true;
-    clear.tool.safety.permission_key = "delete_repository";
+    // 这是本地凭据操作，与 GitHub 仓库删除无关；挂 write 开关即可，
+    // 真正的防护来自上面的运行时二次确认。
+    clear.tool.safety.permission_key = "write";
     clear.handler = &HandleTokenClear;
     registry->Register(clear);
 }
