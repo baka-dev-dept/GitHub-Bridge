@@ -14,6 +14,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -110,6 +111,19 @@ void PermissionManager::LoadConfig() {
     loaded.delete_branch = pick("delete_branch", loaded.delete_branch);
     loaded.force_push = pick("force_push", loaded.force_push);
     loaded.merge_pull_request = pick("merge_pull_request", loaded.merge_pull_request);
+
+    // 仓库白名单在顶层（与 permissions 平级），因为它不是开关而是规则。
+    const auto repo_it = parsed.find("allowed_repositories");
+    if (repo_it != parsed.end() && repo_it->is_array()) {
+        for (const auto& entry : *repo_it) {
+            if (entry.is_string()) {
+                const std::string pattern = entry.get<std::string>();
+                if (!pattern.empty()) {
+                    loaded.allowed_repositories.push_back(pattern);
+                }
+            }
+        }
+    }
     config_ = loaded;
 
     Logger::Get()->Info("已加载权限配置: read=" + std::to_string(loaded.read) +
@@ -117,7 +131,8 @@ void PermissionManager::LoadConfig() {
                         " create=" + std::to_string(loaded.create) +
                         " delete_repository=" + std::to_string(loaded.delete_repository) +
                         " delete_branch=" + std::to_string(loaded.delete_branch) +
-                        " merge_pull_request=" + std::to_string(loaded.merge_pull_request));
+                        " merge_pull_request=" + std::to_string(loaded.merge_pull_request) +
+                        " allowed_repositories=" + std::to_string(loaded.allowed_repositories.size()));
 }
 
 bool PermissionManager::IsSwitchEnabled(const std::string& permission_key) const {
@@ -164,13 +179,85 @@ std::string PermissionManager::Fingerprint(const std::string& tool_name, const s
     return hex;
 }
 
-PermissionOutcome PermissionManager::Check(const std::string& tool_name, bool requires_confirmation, const std::string& permission_key, const std::string& target_fingerprint, const std::string& provided_token) {
+bool PermissionManager::MatchRepositoryPattern(const std::string& pattern, const std::string& owner_repo) {
+    // 通配匹配，只支持 '*'（匹配任意长度，含空）。比较忽略大小写。
+    // 刻意不用正则：正则的元字符会让配置里的 '.' 等字符产生意外语义。
+    const auto lower = [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); };
+
+    size_t p = 0;
+    size_t s = 0;
+    size_t star_p = std::string::npos;
+    size_t star_s = 0;
+
+    while (s < owner_repo.size()) {
+        if (p < pattern.size() && (pattern[p] == '?' || lower(pattern[p]) == lower(owner_repo[s]))) {
+            ++p;
+            ++s;
+        } else if (p < pattern.size() && pattern[p] == '*') {
+            star_p = p;
+            star_s = s;
+            ++p;
+        } else if (star_p != std::string::npos) {
+            // 回溯：让上一个 '*' 多吞一个字符。
+            p = star_p + 1;
+            ++star_s;
+            s = star_s;
+        } else {
+            return false;
+        }
+    }
+    while (p < pattern.size() && pattern[p] == '*') {
+        ++p;
+    }
+    return p == pattern.size();
+}
+
+bool PermissionManager::IsRepositoryAllowed(const std::string& arguments_json) const {
+    // 未配置白名单时不限制，保持升级前的行为不变。
+    if (config_.allowed_repositories.empty()) {
+        return true;
+    }
+
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    if (!args.is_object()) {
+        return true;
+    }
+
+    const auto owner_it = args.find("owner");
+    const auto repo_it = args.find("repo");
+    // 没有明确的单仓库目标（如 search、get_user）就不受白名单约束。
+    if (owner_it == args.end() || repo_it == args.end() || !owner_it->is_string() || !repo_it->is_string()) {
+        return true;
+    }
+
+    const std::string owner_repo = owner_it->get<std::string>() + "/" + repo_it->get<std::string>();
+    for (const auto& pattern : config_.allowed_repositories) {
+        if (MatchRepositoryPattern(pattern, owner_repo)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+PermissionOutcome PermissionManager::Check(const std::string& tool_name, bool requires_confirmation, const std::string& permission_key, const std::string& target_fingerprint, const std::string& provided_token, const std::string& arguments_json) {
     PermissionOutcome outcome;
 
     // 第一道：配置开关。没有权限键表示不受开关约束。
     if (!permission_key.empty() && !IsSwitchEnabled(permission_key)) {
         outcome.verdict = PermissionVerdict::Denied;
         outcome.reason = "已被权限配置禁止: " + permission_key;
+        Logger::Get()->Warn("权限拒绝 " + tool_name + "：" + outcome.reason);
+        return outcome;
+    }
+
+    // 第二道：仓库白名单。开关放行不等于目标合法——白名单把 Agent 限制在
+    // 指定仓库内，防止误碰生产仓库。放在确认票据之前，避免为必然被拒的
+    // 操作白白下发票据。
+    if (!IsRepositoryAllowed(arguments_json)) {
+        const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+        const std::string target = (args.is_object() && args.contains("owner") && args.contains("repo")) ? args.value("owner", "") + "/" + args.value("repo", "") : std::string("<未知>");
+        outcome.verdict = PermissionVerdict::Denied;
+        outcome.reason = "仓库不在白名单内: " + target;
         Logger::Get()->Warn("权限拒绝 " + tool_name + "：" + outcome.reason);
         return outcome;
     }

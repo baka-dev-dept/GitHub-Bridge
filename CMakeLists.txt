@@ -51,6 +51,7 @@ set(GHB_TEST_SOURCES
     GitHub-Bridge.Tests/GraphQLGuardTests.cpp
     GitHub-Bridge.Tests/CacheManagerTests.cpp
     GitHub-Bridge.Tests/TokenProfileTests.cpp
+    GitHub-Bridge.Tests/RepositoryWhitelistTests.cpp
 )
 
 # ---------------------------------------------------------------------------

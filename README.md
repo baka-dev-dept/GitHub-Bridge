@@ -4,7 +4,7 @@
 
 **Windows 11 x64 + Linux** · C++20 · MSVC / GCC · MCP 规范固定 `2024-11-05`
 
-**35 个工具 · 31 个 GitHub API 端点全部实现 · 76 条单元测试通过**
+**35 个工具 · 31 个 GitHub API 端点全部实现 · 89 条单元测试通过**
 
 ---
 
@@ -41,11 +41,12 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 | WinHTTP 传输（gzip / TLS / 禁重定向 / 超时） | ✅ 已实现，实测通过 |
 | **31 个 GitHub API 端点** | ✅ **全部实现**，端到端实测通过 |
 | **PermissionManager + 危险操作二次确认** | ✅ **已实现**，实测通过 |
+| **仓库白名单（Advanced Permission Rules）** | ✅ 已实现，89 条测试通过 |
 | **限流主动处理 + 暂时性故障重试** | ✅ 已实现，单元验证 22/22 |
 | 通用请求重试 | ✅ 已实现（暂时性故障，仅 GET） |
 | 响应缓存 | ✅ 已实现（ETag 条件请求） |
 | 多令牌 profile | ✅ 已实现（命名 + 显式切换） |
-| 单元测试工程 | ✅ 已实现，**76 条用例** |
+| 单元测试工程 | ✅ 已实现，**89 条用例** |
 | CMake 工程 | ✅ 已实现（Windows / Linux） |
 
 ## 工具清单（35 个）
@@ -231,7 +232,7 @@ cmake --build build -j
 
 ## 单元测试
 
-76 条用例，纯内存运行——**不需要网络、不需要令牌、不写文件**。
+89 条用例，纯内存运行——**不需要网络、不需要令牌、不写文件**。
 
 ```powershell
 # 构建并运行（Debug 或 Release 产物相同）
@@ -246,7 +247,8 @@ cmake --build build -j
 | `JsonCodecTests.cpp` | JSON-RPC 编解码、通知无 id、id 类型保真、非法输入、单行分帧 |
 | `RateLimiterTests.cpp` | 限额状态机：耗尽/过期/缺头/垃圾值/超长窗口 |
 | `RetryTests.cpp` | 可重试分类、退避常量、HTTP 状态到 `error_kind` 的翻译 |
-| `PermissionTests.cpp` | 权限默认值、目标指纹、未知权限键拒绝、确认票据 |
+| PermissionTests.cpp | 权限默认值、目标指纹、未知权限键拒绝、确认票据 |
+| RepositoryWhitelistTests.cpp | 仓库白名单通配匹配、越界拒绝、无仓库参数豁免 |
 | `ToolRegistryTests.cpp` | 注册/查找/重名拒绝/无处理函数拒绝 |
 | `GraphQLGuardTests.cpp` | mutation 识别、字符串与注释噪声剥离、词边界匹配 |
 
@@ -328,6 +330,29 @@ github_token_status  {}
 
 - 未知字段**忽略**（前向兼容）；**未知权限键一律拒绝**，防止新工具漏登记开关被静默放行；
 - 配置文件损坏或不合法的 JSON → 回退默认值，不会启动失败。
+
+### 仓库白名单
+
+把 Agent 限制在指定仓库内，防止误碰生产仓库。**第二道防线：开关放行不等于目标合法。**
+
+`json
+{
+  "permissions": { "read": true, "write": true },
+  "allowed_repositories": ["baka-dev-dept/ghb-test-*", "octocat/Hello-World"]
+}
+`
+
+| 规则 | 说明 |
+|---|---|
+| 键缺失 / 空数组 | **不限制**（升级后行为不变） |
+| 匹配方式 | owner/repo 全串，支持 `*` 通配 |
+| 大小写 | 不敏感（GitHub 本身不区分） |
+| 无 owner/epo 参数的工具 | 不受约束（如 github_get_user、search_repositories） |
+| 违反 | permission_denied，reason 含实际仓库名 |
+
+`*` 可跨斜杠：`org/*` 匹配该组织下任意仓库（含子路径）。
+
+白名单在**确认票据之前**检查——不会为注定被拒的操作白白下发票据。
 
 ### 运行时二次确认
 
@@ -484,7 +509,7 @@ GitHub-Bridge/
 ├── src/            与 include 对应的实现 + platform/{windows,linux}/
 ├── third_party/    nlohmann/json 3.12.0（vendored）
 ├── GitHub-Bridge/          主程序工程
-├── GitHub-Bridge.Tests/    单元测试工程（76 条用例）
+├── GitHub-Bridge.Tests/    单元测试工程（89 条用例）
 ├── build.ps1               Windows：净化环境后调 MSBuild（规避 MSB6001）
 ├── CMakeLists.txt          跨平台构建（Windows / Linux）
 └── GitHub-Bridge.slnx + GitHub-Bridge.settings.props

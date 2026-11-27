@@ -185,7 +185,7 @@ std::string Gateway::HandleToolsCall(const RpcMessage& request) {
     }
 
     const std::string fingerprint = PermissionManager::Fingerprint(tool_name, arguments);
-    const PermissionOutcome permission = PermissionManager::Get()->Check(tool_name, registration->tool.safety.requires_confirmation, permission_key, fingerprint, confirm_token);
+    const PermissionOutcome permission = PermissionManager::Get()->Check(tool_name, registration->tool.safety.requires_confirmation, permission_key, fingerprint, confirm_token, arguments);
 
     if (permission.verdict == PermissionVerdict::Denied ||
         permission.verdict == PermissionVerdict::BadConfirmToken) {

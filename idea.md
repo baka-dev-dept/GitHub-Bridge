@@ -713,8 +713,8 @@ AI Agent 只能调用已注册的 MCP Tools，不能直接访问 Token 存储。
 - [x] Cache Manager
 - [x] Request Retry
 - [x] Rate Limit Handling
-- [ ] Batch Operations
-- [ ] Advanced Permission Rules
+- [ ] Batch Operations —— 暂不做：GitHub 无批量端点，内部只能循环且无事务性；MCP 客户端本身可并发调用
+- [x] Advanced Permission Rules（仓库白名单）
 - [x] Unit Tests
 
 ---

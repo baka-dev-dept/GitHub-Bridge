@@ -52,8 +52,17 @@ public:
     //   requires_confirmation：工具是否声明为不可逆操作；
     //   permission_key：工具声明的配置开关名，空表示不受开关约束；
     //   target_fingerprint：目标对象指纹，票据必须与它一一对应；
-    //   provided_token：调用方带来的 confirm_token，首次调用传空。
-    PermissionOutcome Check(const std::string& tool_name, bool requires_confirmation, const std::string& permission_key, const std::string& target_fingerprint, const std::string& provided_token);
+    //   provided_token：调用方带来的 confirm_token，首次调用传空；
+    //   arguments_json：本次调用的原始参数，用于仓库白名单判定。
+    PermissionOutcome Check(const std::string& tool_name, bool requires_confirmation, const std::string& permission_key, const std::string& target_fingerprint, const std::string& provided_token, const std::string& arguments_json);
+
+    // 从参数里取 owner/repo 与白名单比对。没有明确的单仓库目标时返回 true
+    // （如 search_repositories、github_get_user 这类工具不受白名单约束）。
+    bool IsRepositoryAllowed(const std::string& arguments_json) const;
+
+    // 通配匹配：支持 '*' 匹配任意字符，比较时忽略大小写（GitHub 的
+    // owner/repo 本身不区分大小写）。单独暴露以便单元测试。
+    static bool MatchRepositoryPattern(const std::string& pattern, const std::string& owner_repo);
 
     // 计算目标指纹。同一目标得到同一指纹，目标一变即不同，
     // 这是「改目标即失效」的实现基础。

@@ -16,6 +16,9 @@ struct PermissionConfig {
     bool delete_branch = false;
     bool force_push = false;
     bool merge_pull_request = true;
+    // 仓库白名单。空表示不限制（保持向后兼容）；非空时只允许匹配的 owner/repo，
+    // 支持 '*' 通配。用于把 Agent 限制在测试仓库内，避免误碰生产仓库。
+    std::vector<std::string> allowed_repositories;
 };
 
 // 已下发的确认票据。绑定具体目标指纹，改目标即失效。

@@ -45,7 +45,7 @@ TEST(Permission, UnknownPermissionKeyDenied) {
     config.read = true;
     config.write = true;
     PermissionManager::Get()->ApplyConfig(config);
-    const PermissionOutcome outcome = PermissionManager::Get()->Check("some_new_tool", false, "not_a_real_key", "fp", "");
+    const PermissionOutcome outcome = PermissionManager::Get()->Check("some_new_tool", false, "not_a_real_key", "fp", "", R"({})");
     CHECK(outcome.verdict == PermissionVerdict::Denied);
 }
 
@@ -53,7 +53,7 @@ TEST(Permission, DisabledReadDeniesReadTool) {
     PermissionConfig config;
     config.read = false;
     PermissionManager::Get()->ApplyConfig(config);
-    const PermissionOutcome outcome = PermissionManager::Get()->Check("github_get_user", false, "read", "fp", "");
+    const PermissionOutcome outcome = PermissionManager::Get()->Check("github_get_user", false, "read", "fp", "", R"({})");
     CHECK(outcome.verdict == PermissionVerdict::Denied);
 }
 
@@ -61,7 +61,7 @@ TEST(Permission, EnabledReadAllows) {
     PermissionConfig config;
     config.read = true;
     PermissionManager::Get()->ApplyConfig(config);
-    const PermissionOutcome outcome = PermissionManager::Get()->Check("github_get_user", false, "read", "fp", "");
+    const PermissionOutcome outcome = PermissionManager::Get()->Check("github_get_user", false, "read", "fp", "", R"({})");
     CHECK(outcome.verdict == PermissionVerdict::Allow);
 }
 
@@ -70,7 +70,7 @@ TEST(Permission, DestructiveToolRequiresConfirmation) {
     PermissionConfig config;
     config.delete_repository = true;
     PermissionManager::Get()->ApplyConfig(config);
-    const PermissionOutcome outcome = PermissionManager::Get()->Check("github_delete_repository", true, "delete_repository", "fp123", "");
+    const PermissionOutcome outcome = PermissionManager::Get()->Check("github_delete_repository", true, "delete_repository", "fp123", "", R"({"owner":"a","repo":"b"})");
     CHECK(outcome.verdict == PermissionVerdict::NeedConfirm);
     CHECK(!outcome.confirm_token.empty());
 }
@@ -79,6 +79,6 @@ TEST(Permission, WrongTicketRejected) {
     PermissionConfig config;
     config.delete_repository = true;
     PermissionManager::Get()->ApplyConfig(config);
-    const PermissionOutcome outcome = PermissionManager::Get()->Check("github_delete_repository", true, "delete_repository", "fp456", "deadbeef");
+    const PermissionOutcome outcome = PermissionManager::Get()->Check("github_delete_repository", true, "delete_repository", "fp456", "deadbeef", R"({"owner":"a","repo":"b"})");
     CHECK(outcome.verdict == PermissionVerdict::BadConfirmToken);
 }
