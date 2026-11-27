@@ -4,7 +4,7 @@
 
 Windows 11 x64 · C++20 · Visual Studio 2026 · MCP 规范固定 `2024-11-05`
 
-**34 个工具 · 31 个 GitHub API 端点全部实现 · 84 项测试通过**
+**35 个工具 · 31 个 GitHub API 端点全部实现 · 76 条单元测试通过**
 
 ---
 
@@ -44,24 +44,53 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 | **限流主动处理 + 暂时性故障重试** | ✅ 已实现，单元验证 22/22 |
 | 通用请求重试 | ✅ 已实现（暂时性故障，仅 GET） |
 | 响应缓存 | ✅ 已实现（ETag 条件请求） |
-| 多令牌 profile | ⬜ 未实现 |
-| 单元测试工程 | ✅ 已实现，**70 条用例** |
+| 多令牌 profile | ✅ 已实现（命名 + 显式切换） |
+| 单元测试工程 | ✅ 已实现，**76 条用例** |
 | CMake 工程 | ⬜ 未实现（仅 MSBuild） |
 
-## 工具清单（34 个）
+## 工具清单（35 个）
 
 「确认」列表示该工具是**不可逆操作**，首次调用会返回一次性 `confirm_token`，需携带票据重试才真正执行。
 
-### 服务与令牌（6）
+### 服务与令牌（7）
 
 | 工具 | 说明 | 联网 | 写 | 确认 |
 |---|---|---|---|---|
 | `github_server_info` | 版本、协议版本、工具数量、服务器时间 | 否 | 否 | |
-| `github_token_status` | 令牌状态：`configured` / `valid` / `validated` | 是 | 否 | |
-| `github_token_import` | 导入 PAT，DPAPI 加密落盘并收紧 ACL | 否 | 是 | |
-| `github_token_clear` | 删除本地令牌并清空内存缓存 | 否 | 是 | **是** |
+| `github_token_status` | 令牌状态、active profile、全部 profile 列表 | 是 | 否 | |
+| `github_token_import` | 导入 PAT 到指定 profile，DPAPI 加密落盘 | 否 | 是 | |
+| `github_token_use` | 切换 active profile（本地操作，不联网校验） | 否 | 是 | |
+| `github_token_clear` | 删除指定或当前 profile | 否 | 是 | **是** |
 | `github_get_user` | 调 `/user` 返回当前账号 | 是 | 否 | |
 | `github_rate_limit` | 调 `/rate_limit`，匿名可用 | 是 | 否 | |
+
+### 多令牌 profile
+
+磁盘上用一个 DPAPI 加密文件保存多个命名槽位：
+
+```json
+{
+  "version": 2,
+  "active": "work",
+  "profiles": {
+    "work":     { "token": "<加密>", "saved_at": 1795800000 },
+    "personal": { "token": "<加密>", "saved_at": 1795800100 }
+  }
+}
+```
+
+| 项 | 说明 |
+|---|---|
+| profile 名 | `[A-Za-z0-9_-]`，1–32 字符，**大小写敏感** |
+| 默认名 | `default` |
+| 首个导入 | 自动成为 active |
+| 切换 | `github_token_use`，**只改本地状态不联网** |
+| 删除 | `github_token_clear` + `profile` 参数；删光后文件一并移除 |
+| 旧版兼容 | v1 裸令牌文件**自动迁移**为 `default` profile，不丢令牌 |
+
+**切换不校验令牌有效性**——若该令牌已失效，下一次真实调用会返回 401，这是调用方该看到的真实状态。
+
+缓存按授权头隔离，不同 profile 天然不会串用。
 
 ### Repository（5）
 
@@ -160,7 +189,7 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 
 ## 单元测试
 
-70 条用例，纯内存运行——**不需要网络、不需要令牌、不写文件**。
+76 条用例，纯内存运行——**不需要网络、不需要令牌、不写文件**。
 
 ```powershell
 # 构建并运行（Debug 或 Release 产物相同）
@@ -199,7 +228,23 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 
 ## 导入令牌
 
-调用 `github_token_import`，参数 `{"token": "<你的 PAT>"}`。返回值只有 `{"ok": true}`，**不回显令牌**。
+```jsonc
+// 存入默认 profile
+{"token": "<你的 PAT>"}
+
+// 存入命名 profile
+{"token": "<你的 PAT>", "profile": "work"}
+```
+
+返回值不含令牌明文。
+
+```jsonc
+// 切换
+github_token_use  {"profile": "work"}
+
+// 查看全部 profile
+github_token_status  {}
+```
 
 令牌需要的前缀：`ghp_` / `gho_` / `ghu_` / `ghs_` / `ghr_`（classic）或 `github_pat_`（fine-grained）。
 
@@ -402,7 +447,7 @@ GitHub-Bridge/
 
 ## 已知限制
 
-- 只支持**单令牌**，多账号 profile 未实现；
+
 - 重试只覆盖 GET；写操作失败后需由调用方自行判断是否重发；
 - `github_graphql` 的 mutation 判定基于词法扫描而非完整语法解析，极少数特殊构造可能漏判；
 - 无 CMake 工程，仅 MSBuild；

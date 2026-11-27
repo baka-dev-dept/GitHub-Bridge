@@ -28,6 +28,14 @@ struct TokenImportResult {
     std::string message;
 };
 
+// 一个命名令牌的公开信息。刻意不含令牌本身，
+// 供 status 工具列出有哪些 profile 而不泄露任何凭据。
+struct TokenProfileInfo {
+    std::string name;
+    bool active = false;
+    int64_t saved_at_unix = 0;
+};
+
 // 固定熵派生源。熵值不得以明文硬编码进源码，由该常量与另一处本地数据组合生成。
 struct TokenStoragePaths {
     std::string data_file;

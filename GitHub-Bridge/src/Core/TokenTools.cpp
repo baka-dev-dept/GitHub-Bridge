@@ -24,6 +24,28 @@ std::string LoadStatusName(TokenLoadStatus status) {
     return "unknown";
 }
 
+// 读取可选字符串参数。缺省或类型不对时返回空串，由调用方决定默认值。
+std::string OptionalString(const nlohmann::json& arguments, const char* key) {
+    const auto it = arguments.find(key);
+    if (it == arguments.end() || !it->is_string()) {
+        return {};
+    }
+    return it->get<std::string>();
+}
+
+nlohmann::json ProfilesToJson() {
+    nlohmann::json array = nlohmann::json::array();
+    for (const auto& info : TokenManager::Get()->ListProfiles()) {
+        // 只输出名字与时间，绝不输出令牌本身。
+        array.push_back({
+            {"name", info.name},
+            {"active", info.active},
+            {"saved_at", info.saved_at_unix},
+        });
+    }
+    return array;
+}
+
 std::string HandleTokenStatus(const std::string&) {
     TokenStatusSnapshot snapshot = TokenManager::Get()->Snapshot();
     const TokenLoadStatus load_status = TokenManager::Get()->LastLoadStatus();
@@ -48,7 +70,6 @@ std::string HandleTokenStatus(const std::string&) {
                 break;
         }
     } else {
-        // Phase 2 没有接 GitHub API，不能声称令牌有效。
         message = "令牌已配置且可解密；有效性尚未校验";
     }
 
@@ -94,6 +115,8 @@ std::string HandleTokenStatus(const std::string&) {
         {"login", login},
         {"scopes", scopes},
         {"token_type", snapshot.token_type},
+        {"active_profile", TokenManager::Get()->ActiveProfile()},
+        {"profiles", ProfilesToJson()},
         {"storage_status", LoadStatusName(load_status)},
         {"storage_path", TokenStorage::Get()->ResolvePaths().data_file},
         {"validation_error", validation_error},
@@ -114,23 +137,49 @@ std::string HandleTokenImport(const std::string& arguments_json) {
     }
 
     // 明文只在这一行存在：立刻交给 TokenManager，后续不再引用。
-    const TokenImportResult result = TokenManager::Get()->Import(it->get<std::string>());
+    const TokenImportResult result = TokenManager::Get()->Import(it->get<std::string>(), OptionalString(arguments, "profile"));
 
     // 返回值里绝不包含令牌本身，只回状态与说明。
     const nlohmann::json out = {
         {"ok", result.ok},
         {"message", result.message},
-        {"configured", result.ok},
+        {"active_profile", TokenManager::Get()->ActiveProfile()},
+        {"profiles", ProfilesToJson()},
     };
     return out.dump();
 }
 
-std::string HandleTokenClear(const std::string&) {
-    const bool cleared = TokenManager::Get()->Clear();
+std::string HandleTokenUse(const std::string& arguments_json) {
+    const nlohmann::json arguments = nlohmann::json::parse(arguments_json, nullptr, false);
+    if (arguments.is_discarded() || !arguments.is_object()) {
+        return R"({"ok":false,"message":"arguments 必须是对象"})";
+    }
+
+    const std::string profile = OptionalString(arguments, "profile");
+    if (profile.empty()) {
+        return R"({"ok":false,"message":"缺少字符串参数 profile"})";
+    }
+
+    const TokenImportResult result = TokenManager::Get()->Use(profile);
     const nlohmann::json out = {
-        {"ok", cleared},
-        {"configured", false},
-        {"message", cleared ? "令牌已从本地清除" : "清除令牌失败，请查看日志"},
+        {"ok", result.ok},
+        {"message", result.message},
+        {"active_profile", TokenManager::Get()->ActiveProfile()},
+        {"profiles", ProfilesToJson()},
+    };
+    return out.dump();
+}
+
+std::string HandleTokenClear(const std::string& arguments_json) {
+    const nlohmann::json arguments = nlohmann::json::parse(arguments_json, nullptr, false);
+    const std::string profile = arguments.is_object() ? OptionalString(arguments, "profile") : std::string();
+
+    const TokenImportResult result = TokenManager::Get()->ClearProfile(profile);
+    const nlohmann::json out = {
+        {"ok", result.ok},
+        {"message", result.message},
+        {"active_profile", TokenManager::Get()->ActiveProfile()},
+        {"profiles", ProfilesToJson()},
     };
     return out.dump();
 }
@@ -144,8 +193,8 @@ void RegisterTokenTools() {
     status.tool.name = "github_token_status";
     status.tool.title = "Token status";
     status.tool.description =
-        "返回本地令牌的配置与存储状态。configured 表示能否解密读取，valid 表示 GitHub 是否认可该令牌——"
-        "Phase 2 尚未联网校验，valid 恒为 false。返回值不含令牌明文。";
+        "返回本地令牌的配置与存储状态，以及全部 profile 列表和当前 active profile。"
+        "configured 表示能否解密读取，valid 表示 GitHub 是否认可该令牌。返回值不含令牌明文。";
     status.tool.input_schema_json = R"({"type":"object","properties":{},"additionalProperties":false})";
     status.tool.annotations.read_only_hint = true;
     status.tool.annotations.idempotent_hint = true;
@@ -159,9 +208,9 @@ void RegisterTokenTools() {
     import.tool.title = "Import token";
     import.tool.description =
         "导入 GitHub Personal Access Token，使用 Windows DPAPI 加密后保存到本机，并把文件权限收紧到当前用户。"
-        "返回值不含令牌明文。";
+        "可用 profile 参数存入不同命名槽位（如 work / personal），同名则覆盖。返回值不含令牌明文。";
     import.tool.input_schema_json =
-        R"({"type":"object","properties":{"token":{"type":"string","description":"GitHub PAT，需带 ghp_/github_pat_ 等前缀"}},"required":["token"],"additionalProperties":false})";
+        R"({"type":"object","properties":{"token":{"type":"string","description":"GitHub PAT，需带 ghp_/github_pat_ 等前缀"},"profile":{"type":"string","description":"命名槽位，默认 default；只允许字母、数字、下划线、连字符"}},"required":["token"],"additionalProperties":false})";
     import.tool.annotations.read_only_hint = false;
     import.tool.annotations.destructive_hint = false;
     import.tool.annotations.idempotent_hint = true;
@@ -171,11 +220,31 @@ void RegisterTokenTools() {
     import.handler = &HandleTokenImport;
     registry->Register(import);
 
+    ToolRegistration use;
+    use.tool.name = "github_token_use";
+    use.tool.title = "Switch token profile";
+    use.tool.description =
+        "把指定 profile 设为当前使用。这是本地操作，不联网校验令牌有效性；"
+        "若该令牌已失效，随后调用 GitHub 工具会返回 401。";
+    use.tool.input_schema_json =
+        R"({"type":"object","properties":{"profile":{"type":"string","description":"要启用的 profile 名"}},"required":["profile"],"additionalProperties":false})";
+    use.tool.annotations.read_only_hint = false;
+    use.tool.annotations.destructive_hint = false;
+    use.tool.annotations.idempotent_hint = true;
+    use.tool.annotations.open_world_hint = false;
+    use.tool.safety.kind = OperationKind::Write;
+    use.tool.safety.permission_key = "write";
+    use.handler = &HandleTokenUse;
+    registry->Register(use);
+
     ToolRegistration clear;
     clear.tool.name = "github_token_clear";
     clear.tool.title = "Clear token";
-    clear.tool.description = "删除本地保存的令牌文件并清空内存缓存。不可撤销，需要先导入才能恢复。";
-    clear.tool.input_schema_json = R"({"type":"object","properties":{},"additionalProperties":false})";
+    clear.tool.description =
+        "删除本地保存的令牌。指定 profile 则只删该槽位，不指定则删当前 active profile。"
+        "删光后令牌文件一并移除。不可撤销，需要先导入才能恢复。";
+    clear.tool.input_schema_json =
+        R"({"type":"object","properties":{"profile":{"type":"string","description":"要删除的 profile 名，省略则删当前 active"}},"additionalProperties":false})";
     clear.tool.annotations.read_only_hint = false;
     clear.tool.annotations.destructive_hint = true;
     clear.tool.annotations.idempotent_hint = true;
