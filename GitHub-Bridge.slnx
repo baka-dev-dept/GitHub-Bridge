@@ -4,4 +4,5 @@
     <Platform Name="x86" />
   </Configurations>
   <Project Path="GitHub-Bridge/GitHub-Bridge.vcxproj" Id="621f7560-754e-4b30-9714-0d4b4b84e1ab" />
+  <Project Path="GitHub-Bridge.Tests/GitHub-Bridge.Tests.vcxproj" Id="3e5f2a71-9c4d-4b18-8a2e-7d61c0f5b8a3" />
 </Solution>

@@ -88,6 +88,9 @@
       <Filter>源文件\GitHub</Filter>
     </ClCompile>
     <ClCompile Include="src\GitHub\RateLimiter.cpp">
+    <ClCompile Include="src\GitHub\GraphQLGuard.cpp">
+      <Filter>源文件\GitHub</Filter>
+    </ClCompile>
       <Filter>源文件\GitHub</Filter>
     </ClCompile>
     <ClCompile Include="src\GitHub\WinHttpClient.cpp">
@@ -153,6 +156,9 @@
       <Filter>头文件\GitHub</Filter>
     </ClInclude>
     <ClInclude Include="include\GitHub\RateLimiter.h">
+    <ClInclude Include="include\GitHub\GraphQLGuard.h">
+      <Filter>头文件\GitHub</Filter>
+    </ClInclude>
       <Filter>头文件\GitHub</Filter>
     </ClInclude>
     <ClInclude Include="include\GitHub\WinHttpClient.h">

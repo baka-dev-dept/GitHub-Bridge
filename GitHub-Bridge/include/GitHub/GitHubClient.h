@@ -49,18 +49,19 @@ public:
     // 退避间隔：第一次 500ms，第二次 1500ms。
     static constexpr int kBackoffMs[] = {500, 1500};
 
+    // 这个错误值不值得重发：只有传输层失败与服务端 5xx 是暂时性的。
+    // 凭据、权限、参数类错误重发也不会变。纯函数，公开以便单元测试。
+    static bool IsRetryable(GitHubErrorKind kind);
+
+    // HTTP 状态到 error_kind 的翻译。纯函数，公开以便单元测试。
+    static GitHubResponse Classify(int status, const std::string& body, const std::map<std::string, std::string>& headers);
+
 private:
     GitHubClient() = default;
     ~GitHubClient() = default;
 
     // 发一次请求，不含限流等待与重试。重试逻辑在 Request 里，避免递归。
     HttpResponse SendOnce(const std::string& method, const std::string& path, const std::string& body, const std::string& authorization);
-
-    // 这个错误值不值得重发：只有传输层失败与服务端 5xx 是暂时性的。
-    // 凭据、权限、参数类错误重发也不会变。
-    static bool IsRetryable(GitHubErrorKind kind);
-
-    static GitHubResponse Classify(int status, const std::string& body, const std::map<std::string, std::string>& headers);
 };
 
 } // namespace ghb

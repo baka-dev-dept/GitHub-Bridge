@@ -45,7 +45,7 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 | 通用请求重试 | ✅ 已实现（暂时性故障，仅 GET） |
 | 响应缓存 | ⬜ 未实现 |
 | 多令牌 profile | ⬜ 未实现 |
-| 单元测试工程 | ⬜ 未实现（现有为手工测试脚本） |
+| 单元测试工程 | ✅ 已实现，**59 条用例** |
 | CMake 工程 | ⬜ 未实现（仅 MSBuild） |
 
 ## 工具清单（34 个）
@@ -149,9 +149,37 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
     GitHub-Bridge.slnx -p:Configuration=Release -p:Platform=x64 -nologo
 ```
 
-产物：`x64\Release\GitHub-Bridge.exe`（输出目录基于解决方案根，中间文件在 `x64\out\Release\`）。
+产物：`x64\Release\GitHub-Bridge.exe`（输出目录基于解决方案根，中间文件在 `x64\out\<工程名>\Release\`）。
 
-> 若在已经加载过其他工具的终端里直接跑 MSBuild 撞到 `MSB6001`（环境变量大小写并存，如 `Path`/`PATH`、`HTTP_PROXY`/`http_proxy`），用干净环境启动 MSBuild 即可。
+```powershell
+# 推荐用 build.ps1：它先净化环境（见下），再调 MSBuild
+.\build.ps1 -Configuration Release -Platform x64
+```
+
+> **`MSB6001` 的成因**：MSBuild 的 ToolTask 内部用大小写敏感的字典装环境变量，遇到 `HTTP_PROXY` 与 `http_proxy` 这类仅大小写不同的键会直接抛异常。常见于配置了代理的机器。`build.ps1` 会合并 Machine/User/Process 三层环境、按小写去重并剔除代理变量，从根上避开。
+
+## 单元测试
+
+59 条用例，纯内存运行——**不需要网络、不需要令牌、不写文件**。
+
+```powershell
+# 构建并运行（Debug 或 Release 产物相同）
+.\build.ps1 -Configuration Debug -Platform x64
+.\x64\Debug\GitHub-Bridge.Tests.exe
+```
+
+输出每个用例的 `PASS` / `FAIL`，全部通过时退出码 `0`，有失败时非 `0`（可直接接 CI）。
+
+| 测试文件 | 覆盖内容 |
+|---|---|
+| `JsonCodecTests.cpp` | JSON-RPC 编解码、通知无 id、id 类型保真、非法输入、单行分帧 |
+| `RateLimiterTests.cpp` | 限额状态机：耗尽/过期/缺头/垃圾值/超长窗口 |
+| `RetryTests.cpp` | 可重试分类、退避常量、HTTP 状态到 `error_kind` 的翻译 |
+| `PermissionTests.cpp` | 权限默认值、目标指纹、未知权限键拒绝、确认票据 |
+| `ToolRegistryTests.cpp` | 注册/查找/重名拒绝/无处理函数拒绝 |
+| `GraphQLGuardTests.cpp` | mutation 识别、字符串与注释噪声剥离、词边界匹配 |
+
+> **不覆盖**的部分：WinHTTP 真实网络请求、DPAPI 加解密、文件落盘。这些需要真实凭据或系统环境，由手工集成测试负责。
 
 ## 接入 MCP 客户端
 
@@ -311,10 +339,13 @@ GitHub-Bridge/
 │   ├── MCP/        JSON-RPC 编解码 + stdio 行分帧传输（2）
 │   ├── Core/       工具注册表、请求分派、内建/令牌/GitHub 工具（5）
 │   ├── Security/   DPAPI 存储、令牌管理、权限与确认票据（3）
-│   ├── GitHub/     WinHTTP 传输、REST 语义层、限流跟踪（3）
+│   ├── GitHub/     WinHTTP 传输、REST 语义层、限流跟踪、GraphQL 守卫（4）
 │   └── Utils/      日志（仅 stderr + 脱敏）（1）
-├── src/            与 include 一一对应的实现（15 个 .cpp，约 3500 行）
+├── src/            与 include 一一对应的实现（16 个 .cpp）
 ├── third_party/    nlohmann/json 3.12.0（vendored）
+├── GitHub-Bridge/          主程序工程
+├── GitHub-Bridge.Tests/    单元测试工程（59 条用例）
+├── build.ps1               净化环境后调 MSBuild（规避 MSB6001）
 └── GitHub-Bridge.slnx + GitHub-Bridge.settings.props
 ```
 
@@ -324,7 +355,6 @@ GitHub-Bridge/
 - 无响应缓存；
 - 重试只覆盖 GET；写操作失败后需由调用方自行判断是否重发；
 - `github_graphql` 的 mutation 判定基于词法扫描而非完整语法解析，极少数特殊构造可能漏判；
-- 无单元测试工程，现有验证为手工测试脚本；
 - 无 CMake 工程，仅 MSBuild；
 - `/rate_limit` 不消耗配额，容易被误判为「额度没下降」；
 - 数据文件位置：`%APPDATA%\GitHub-Bridge\tokens.dat`；

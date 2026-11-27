@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    单元测试工程。被测源码以 ClCompile 方式直接编译进来，不走库依赖，
+    避免为测试引入静态库分层。纯内存、无网络、无令牌、无文件 IO。
+  -->
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{3e5f2a71-9c4d-4b18-8a2e-7d61c0f5b8a3}</ProjectGuid>
+    <RootNamespace>GitHubBridgeTests</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(ProjectDir)..\GitHub-Bridge.settings.props" />
+  </ImportGroup>
+
+  <PropertyGroup>
+    <TargetName>GitHub-Bridge.Tests</TargetName>
+    <LocalDebuggerWorkingDirectory>$(OutDir)</LocalDebuggerWorkingDirectory>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <!-- 测试工程引用被测 .cpp，第三方的 4 级警告不该淹没真正的失败信息。 -->
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <!-- 测试自身 -->
+    <ClCompile Include="TestMain.cpp" />
+    <ClCompile Include="JsonCodecTests.cpp" />
+    <ClCompile Include="RateLimiterTests.cpp" />
+    <ClCompile Include="RetryTests.cpp" />
+    <ClCompile Include="PermissionTests.cpp" />
+    <ClCompile Include="ToolRegistryTests.cpp" />
+    <ClCompile Include="GraphQLGuardTests.cpp" />
+    <ClInclude Include="TestFramework.h" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 被测源码 -->
+    <ClCompile Include="..\GitHub-Bridge\src\MCP\JsonCodec.cpp" />
+    <ClCompile Include="..\GitHub-Bridge\src\GitHub\RateLimiter.cpp" />
+    <ClCompile Include="..\GitHub-Bridge\src\GitHub\GraphQLGuard.cpp" />
+    <ClCompile Include="..\GitHub-Bridge\src\GitHub\GitHubClient.cpp" />
+    <ClCompile Include="..\GitHub-Bridge\src\GitHub\WinHttpClient.cpp" />
+    <ClCompile Include="..\GitHub-Bridge\src\Security\PermissionManager.cpp" />
+    <ClCompile Include="..\GitHub-Bridge\src\Core\ToolRegistry.cpp" />
+    <ClCompile Include="..\GitHub-Bridge\src\Utils\Logger.cpp" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

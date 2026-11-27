@@ -158,6 +158,7 @@
     <ClCompile Include="src\Security\PermissionManager.cpp" />
     <ClCompile Include="src\GitHub\GitHubClient.cpp" />
     <ClCompile Include="src\GitHub\RateLimiter.cpp" />
+    <ClCompile Include="src\GitHub\GraphQLGuard.cpp" />
     <ClCompile Include="src\GitHub\WinHttpClient.cpp" />
     <ClCompile Include="src\Core\GitHubTools.cpp" />
   </ItemGroup>
@@ -181,6 +182,7 @@
     <ClInclude Include="include\Security\PermissionManager.h" />
     <ClInclude Include="include\GitHub\GitHubClient.h" />
     <ClInclude Include="include\GitHub\RateLimiter.h" />
+    <ClInclude Include="include\GitHub\GraphQLGuard.h" />
     <ClInclude Include="include\GitHub\WinHttpClient.h" />
     <ClInclude Include="include\Core\GitHubTools.h" />
   </ItemGroup>
