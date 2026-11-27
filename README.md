@@ -4,6 +4,8 @@
 
 Windows 11 x64 · C++20 · Visual Studio 2026 · MCP 规范固定 `2024-11-05`
 
+**34 个工具 · 31 个 GitHub API 端点全部实现 · 84 项测试通过**
+
 ---
 
 ## 这是什么
@@ -32,97 +34,108 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 
 **以代码为准，未实现的不会被说成已实现。**
 
-| 阶段 | 状态 |
+| 模块 | 状态 |
 |---|---|
-| MCP stdio 传输 + JSON-RPC 2.0 收发 | ✅ 已实现，实测通过 |
-| `initialize` / `tools/list` / `tools/call` / `ping` / 通知 | ✅ 已实现，实测通过 |
+| MCP stdio 传输 + JSON-RPC 2.0 | ✅ 已实现，21 项协议测试通过 |
 | DPAPI 令牌加密存储（第二因子 + ACL + 原子写入） | ✅ 已实现，实测通过 |
-| WinHTTP 传输 + `/user` + `/rate_limit` | ✅ 已实现，详见下文「GitHub API 支持情况」 |
-| 仓库 / 文件 / Issue / PR / Release 工具 | ⬜ 未开始 |
-| PermissionManager 权限开关 + 二次确认 | ⬜ 契约已定义，未实现 |
-| GraphQL API | ⬜ 未开始 |
-| 请求重试 / 响应缓存 | ⬜ 未开始 |
+| WinHTTP 传输（gzip / TLS / 禁重定向 / 超时） | ✅ 已实现，实测通过 |
+| **31 个 GitHub API 端点** | ✅ **全部实现**，端到端实测通过 |
+| **PermissionManager + 危险操作二次确认** | ✅ **已实现**，实测通过 |
+| **限流主动处理** | ✅ 已实现，单元验证 9/9 |
+| 通用请求重试 | ⬜ 未实现（限流重试已有，见下文） |
+| 响应缓存 | ⬜ 未实现 |
+| 多令牌 profile | ⬜ 未实现 |
+| 单元测试工程 | ⬜ 未实现（现有为手工测试脚本） |
+| CMake 工程 | ⬜ 未实现（仅 MSBuild） |
 
-## 已实现的工具（6 个）
+## 工具清单（34 个）
 
-| 工具 | 说明 | 联网 | 写操作 |
+「确认」列表示该工具是**不可逆操作**，首次调用会返回一次性 `confirm_token`，需携带票据重试才真正执行。
+
+### 服务与令牌（6）
+
+| 工具 | 说明 | 联网 | 写 | 确认 |
+|---|---|---|---|---|
+| `github_server_info` | 版本、协议版本、工具数量、服务器时间 | 否 | 否 | |
+| `github_token_status` | 令牌状态：`configured` / `valid` / `validated` | 是 | 否 | |
+| `github_token_import` | 导入 PAT，DPAPI 加密落盘并收紧 ACL | 否 | 是 | |
+| `github_token_clear` | 删除本地令牌并清空内存缓存 | 否 | 是 | **是** |
+| `github_get_user` | 调 `/user` 返回当前账号 | 是 | 否 | |
+| `github_rate_limit` | 调 `/rate_limit`，匿名可用 | 是 | 否 | |
+
+### Repository（5）
+
+| 工具 | REST 端点 | 写 | 确认 |
 |---|---|---|---|
-| `github_server_info` | 返回服务版本、协议版本、工具数量、服务器时间 | 否 | 否 |
-| `github_token_status` | 令牌状态：`configured`（本地可解密）、`valid`（GitHub 认可）、`validated`（是否真的校验过） | 是 | 否 |
-| `github_token_import` | 导入 PAT，DPAPI 加密落盘并收紧 ACL | 否 | 是 |
-| `github_token_clear` | 删除本地令牌文件并清空内存缓存 | 否 | 是 |
-| `github_get_user` | 调 `/user`，返回当前令牌对应的账号 | 是 | 否 |
-| `github_rate_limit` | 调 `/rate_limit`，无令牌时以匿名身份查询 | 是 | 否 |
+| `github_search_repositories` | `GET /search/repositories` | 否 | |
+| `github_get_repository` | `GET /repos/{owner}/{repo}` | 否 | |
+| `github_create_repository` | `POST /user/repos` | 是 | |
+| `github_update_repository` | `PATCH /repos/{owner}/{repo}` | 是 | |
+| `github_delete_repository` | `DELETE /repos/{owner}/{repo}` | 是 | **是** |
 
-`github_token_status` 的三个布尔值刻意分开：**本地能解密 ≠ GitHub 认可该令牌**。网络不通时 `validated` 保持 `false`，避免把「没连上」误报成「令牌坏了」。
+### Files（4）
 
-## GitHub API 支持情况
-
-目标 **31** 个端点（取自 [idea.md](./idea.md) 的 MCP Tools 章节），已实现 **3** 个，其余 **28** 个未实现（含 GraphQL）。
-
-### 已实现的 API
-
-| 工具 | REST 端点 | 说明 | 验证状态 |
+| 工具 | REST 端点 | 写 | 确认 |
 |---|---|---|---|
-| `github_get_user` | `GET /user` | 当前令牌对应的账号 login / id / name / type，回填 `X-OAuth-Scopes` | ✅ 真令牌实测 |
-| `github_rate_limit` | `GET /rate_limit` | 各资源限额；匿名 60/h，认证 5000/h | ✅ 匿名与认证均实测 |
-| `github_token_status` | `GET /user` | 用真实请求校验令牌有效性，401 即 `valid: false` | ✅ 有效与吊销两种状态均实测 |
+| `github_get_file` | `GET /repos/{owner}/{repo}/contents/{path}` | 否 | |
+| `github_get_file_content` | 同上，并解码 base64 正文 | 否 | |
+| `github_create_or_update_file` | `PUT .../contents/{path}` | 是 | |
+| `github_delete_file` | `DELETE .../contents/{path}` | 是 | **是** |
 
-这三项共享 `include/GitHub/` 的传输层（TLS 1.2/1.3、gzip、禁重定向、超时、10 类错误分类、响应头抽取），后续 API 直接复用，不需要重做网络层。
+### Issues（5）
 
-### 未实现的 API
+| 工具 | REST 端点 | 写 | 确认 |
+|---|---|---|---|
+| `github_list_issues` | `GET /repos/{owner}/{repo}/issues` | 否 | |
+| `github_get_issue` | `GET .../issues/{number}` | 否 | |
+| `github_create_issue` | `POST .../issues` | 是 | |
+| `github_update_issue` | `PATCH .../issues/{number}` | 是 | |
+| `github_close_issue` | `PATCH` 改 `state` | 是 | |
 
-#### Repository（5）
+### Branches（4）
 
-- ⬜ `github_search_repositories` — `GET /search/repositories`
-- ⬜ `github_get_repository` — `GET /repos/{owner}/{repo}`
-- ⬜ `github_create_repository` — `POST /user/repos`
-- ⬜ `github_update_repository` — `PATCH /repos/{owner}/{repo}`
-- ⬜ `github_delete_repository` — `DELETE /repos/{owner}/{repo}`
+| 工具 | REST 端点 | 写 | 确认 |
+|---|---|---|---|
+| `github_list_branches` | `GET /repos/{owner}/{repo}/branches` | 否 | |
+| `github_get_branch` | `GET .../branches/{branch}` | 否 | |
+| `github_create_branch` | `POST .../git/refs` | 是 | |
+| `github_delete_branch` | `DELETE .../git/refs/heads/{branch}` | 是 | **是** |
 
-#### Files（4）
+### Pull Requests（5）
 
-- ⬜ `github_get_file` — `GET /repos/{owner}/{repo}/contents/{path}`
-- ⬜ `github_get_file_content` — 同上，并解码 base64 正文
-- ⬜ `github_create_or_update_file` — `PUT /repos/{owner}/{repo}/contents/{path}`
-- ⬜ `github_delete_file` — `DELETE /repos/{owner}/{repo}/contents/{path}`
+| 工具 | REST 端点 | 写 | 确认 |
+|---|---|---|---|
+| `github_list_pull_requests` | `GET /repos/{owner}/{repo}/pulls` | 否 | |
+| `github_get_pull_request` | `GET .../pulls/{number}` | 否 | |
+| `github_create_pull_request` | `POST .../pulls` | 是 | |
+| `github_update_pull_request` | `PATCH .../pulls/{number}` | 是 | |
+| `github_merge_pull_request` | `PUT .../pulls/{number}/merge` | 是 | **是** |
 
-#### Issues（5）
+### Releases（4）
 
-- ⬜ `github_list_issues` — `GET /repos/{owner}/{repo}/issues`
-- ⬜ `github_get_issue` — `GET /repos/{owner}/{repo}/issues/{number}`
-- ⬜ `github_create_issue` — `POST /repos/{owner}/{repo}/issues`
-- ⬜ `github_update_issue` — `PATCH /repos/{owner}/{repo}/issues/{number}`
-- ⬜ `github_close_issue` — `PATCH` 改 `state`
+| 工具 | REST 端点 | 写 | 确认 |
+|---|---|---|---|
+| `github_list_releases` | `GET /repos/{owner}/{repo}/releases` | 否 | |
+| `github_get_release` | `GET .../releases/{id}` | 否 | |
+| `github_create_release` | `POST .../releases` | 是 | |
+| `github_update_release` | `PATCH .../releases/{id}` | 是 | |
 
-#### Branches（4）
+### GraphQL（1）
 
-- ⬜ `github_list_branches` — `GET /repos/{owner}/{repo}/branches`
-- ⬜ `github_get_branch` — `GET /repos/{owner}/{repo}/branches/{branch}`
-- ⬜ `github_create_branch` — `POST /repos/{owner}/{repo}/git/refs`
-- ⬜ `github_delete_branch` — `DELETE /repos/{owner}/{repo}/git/refs/heads/{branch}`
+| 工具 | 说明 | 写 | 确认 |
+|---|---|---|---|
+| `github_graphql` | 执行 GraphQL 查询，返回 `data` 或 `graphql_errors` | 视查询而定 | |
 
-#### Pull Requests（5）
+> ⚠️ **当前限制**：`github_graphql` 挂的是 `read` 权限键，但 GraphQL **可以执行 mutation**（写操作）。
+> 也就是说 `read: true` 时，通过 GraphQL mutation 仍能修改仓库内容，权限开关对它不起约束作用。
+> 要么只把它当查询工具用，要么在后续版本中为 mutation 增加识别与独立开关。
 
-- ⬜ `github_list_pull_requests` — `GET /repos/{owner}/{repo}/pulls`
-- ⬜ `github_get_pull_request` — `GET /repos/{owner}/{repo}/pulls/{number}`
-- ⬜ `github_create_pull_request` — `POST /repos/{owner}/{repo}/pulls`
-- ⬜ `github_update_pull_request` — `PATCH /repos/{owner}/{repo}/pulls/{number}`
-- ⬜ `github_merge_pull_request` — `PUT /repos/{owner}/{repo}/pulls/{number}/merge`
+### 几个刻意的设计
 
-#### Releases（4）
-
-- ⬜ `github_list_releases` — `GET /repos/{owner}/{repo}/releases`
-- ⬜ `github_get_release` — `GET /repos/{owner}/{repo}/releases/{id}`
-- ⬜ `github_create_release` — `POST /repos/{owner}/{repo}/releases`
-- ⬜ `github_update_release` — `PATCH /repos/{owner}/{repo}/releases/{id}`
-
-#### 其他
-
-- ⬜ GraphQL API — `POST /graphql`
-
-> 工具名与端点取自 `idea.md`，参数结构在实现时按该文档风格补充。
-> **写操作与删除类端点**建议先落地 PermissionManager 与 `confirm_token` 二次确认再开放，避免无防护的不可逆操作。
+- `github_token_status` 的三个布尔值分开：**本地能解密 ≠ GitHub 认可该令牌**。网络不通时 `validated` 保持 `false`，避免把「没连上」误报成「令牌坏了」。
+- `github_list_issues` 会同时返回 PR（GitHub 的 issues 接口行为），用 `is_pull_request` 区分。
+- `github_get_file_content` 同时返回 `sha`，更新或删除文件时要用。
+- `github_graphql` 会检查 200 响应里的 `errors` 数组——GitHub 查询失败常返回 200。
 
 ## 构建
 
@@ -164,6 +177,90 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 
 **fine-grained PAT 需要**：Contents、Issues、Pull requests、Administration（删仓库必需）、Workflows 均为 Read and write，Metadata 自动只读。
 
+## 权限与安全防护
+
+两道互相独立的防线，缺一不可。
+
+### 权限开关
+
+配置文件：`%APPDATA%\GitHub-Bridge\permissions.json`（不存在时用默认值）。
+
+```json
+{
+  "permissions": {
+    "read": true,
+    "write": true,
+    "create": true,
+    "delete_repository": false,
+    "delete_branch": false,
+    "force_push": false,
+    "merge_pull_request": true
+  }
+}
+```
+
+| 键 | 默认 | 控制的工具 |
+|---|---|---|
+| `read` | `true` | 所有只读工具 |
+| `write` | `true` | 更新类 + `token_import` / `token_clear` / `delete_file` |
+| `create` | `true` | 建仓库 / Issue / 分支 / PR / Release |
+| `delete_repository` | **`false`** | `github_delete_repository` |
+| `delete_branch` | **`false`** | `github_delete_branch` |
+| `force_push` | **`false`** | 预留（当前无对应工具） |
+| `merge_pull_request` | `true` | `github_merge_pull_request` |
+
+- 未知字段**忽略**（前向兼容）；**未知权限键一律拒绝**，防止新工具漏登记开关被静默放行；
+- 配置文件损坏或不合法的 JSON → 回退默认值，不会启动失败。
+
+### 运行时二次确认
+
+仅靠开关不够：开关一旦打开，任意一次调用都能执行。所以**不可逆操作必须逐次确认**。
+
+| 工具 | 需要确认 |
+|---|---|
+| `github_delete_repository` | ✅ |
+| `github_delete_branch` | ✅ |
+| `github_delete_file` | ✅ |
+| `github_merge_pull_request` | ✅ |
+| `github_token_clear` | ✅ |
+
+流程：
+
+1. 首次调用返回 `{"status": "confirmation_required", "confirm_token": "<32 位 hex>", "expires_at_unix_ms": ...}`；
+2. Agent 携带**相同参数** + `confirm_token` 再调用一次，才真正执行；
+3. 票据 **60 秒过期**、**一次性**（重放会被拒绝）；
+4. 票据**绑定目标指纹**（工具名 + 参数哈希），改目标即失效。
+
+`confirm_token` 由 `BCryptGenRandom` 生成，不是时间戳或随机数种子——可猜的票据等于没有防护。
+
+## 限流处理
+
+GitHub 的额度随每个响应的 `X-RateLimit-*` 头返回，客户端会跟踪最近一次状态。
+
+**只在三个条件全满足时才自动等待**：
+
+| 条件 | 理由 |
+|---|---|
+| 错误类型是限流 | 不碰其他错误 |
+| **方法是 GET** | 幂等，重发无副作用 |
+| 等待时长 ≤ **10 秒** | 超过就立即返回，不阻塞调用方 |
+
+**写操作永不自动重试**——请求可能已被服务端处理，重发会造成重复创建或重复提交。这是安全红线，不是性能取舍。
+
+等待超阈值或无法估算时，立即返回并附带可执行信息：
+
+```json
+{
+  "ok": false,
+  "error_kind": "rate_limited",
+  "retry_after_seconds": 42,
+  "rate_limit": { "limit": 5000, "remaining": 0, "reset_at": 1795800000 },
+  "hint": "额度已耗尽（上限 5000），请在约 42 秒后重试"
+}
+```
+
+> **实测发现**：`/rate_limit` 端点**不消耗配额**——连续调用 40 次 `remaining` 保持不变，而 `GET /users/:name` 会正常扣减。所以调用 `github_rate_limit` 观察到的数字不会因自查而下降，这是正常行为。
+
 ## 安全设计
 
 | 措施 | 说明 |
@@ -190,13 +287,13 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 ```text
 GitHub-Bridge/
 ├── include/
-│   ├── Types/      公共契约：RPC 消息、工具元数据、GitHub 响应、权限、安全
-│   ├── MCP/        JSON-RPC 编解码 + stdio 行分帧传输
-│   ├── Core/       工具注册表、请求分派、内建/令牌/GitHub 工具
-│   ├── Security/   DPAPI 存储（TokenStorage）与业务层（TokenManager）
-│   ├── GitHub/     WinHTTP 传输 + GitHub REST 语义层
-│   └── Utils/      日志（仅 stderr + 脱敏）
-├── src/            与 include 一一对应的实现
+│   ├── Types/      公共契约：RPC 消息、工具元数据、GitHub 响应、权限、安全（7）
+│   ├── MCP/        JSON-RPC 编解码 + stdio 行分帧传输（2）
+│   ├── Core/       工具注册表、请求分派、内建/令牌/GitHub 工具（5）
+│   ├── Security/   DPAPI 存储、令牌管理、权限与确认票据（3）
+│   ├── GitHub/     WinHTTP 传输、REST 语义层、限流跟踪（3）
+│   └── Utils/      日志（仅 stderr + 脱敏）（1）
+├── src/            与 include 一一对应的实现（15 个 .cpp，约 3500 行）
 ├── third_party/    nlohmann/json 3.12.0（vendored）
 └── GitHub-Bridge.slnx + GitHub-Bridge.settings.props
 ```
@@ -204,10 +301,13 @@ GitHub-Bridge/
 ## 已知限制
 
 - 只支持**单令牌**，多账号 profile 未实现；
-- 只实现了 `/user` 与 `/rate_limit` 两个端点，其余 GitHub 能力待补齐；
-- 无自动重试、无响应缓存、无 GraphQL；
-- PermissionManager 与危险操作二次确认机制**尚未落地**（`idea.md` 已定义设计）；
-- 数据文件位置：`%APPDATA%\GitHub-Bridge\tokens.dat`。
+- 无**通用**请求重试（网络抖动直接失败），无响应缓存；
+- **`github_graphql` 绕过权限开关**：它挂 `read` 键，但 GraphQL mutation 能写数据（见上文说明）；
+- 无单元测试工程，现有验证为手工测试脚本；
+- 无 CMake 工程，仅 MSBuild；
+- `/rate_limit` 不消耗配额，容易被误判为「额度没下降」；
+- 数据文件位置：`%APPDATA%\GitHub-Bridge\tokens.dat`；
+- 权限配置：`%APPDATA%\GitHub-Bridge\permissions.json`。
 
 ## 文档
 
