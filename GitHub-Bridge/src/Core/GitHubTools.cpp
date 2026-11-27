@@ -165,6 +165,34 @@ std::string MissingParam(const char* key) {
     return nlohmann::json{{"ok", false}, {"error_kind", "invalid_params"}, {"message", std::string("缺少必填参数: ") + key}}.dump();
 }
 
+// 可选整数字段：存在且是整数才写入，否则保持默认。
+bool GetOptionalInt(const nlohmann::json& args, const char* key, int* out) {
+    const auto it = args.find(key);
+    if (it == args.end() || !it->is_number_integer()) {
+        return false;
+    }
+    *out = it->get<int>();
+    return true;
+}
+
+// 分支名可能含 "/"，直接拼进 URL 会被当成路径分隔符，必须做百分号编码。
+std::string UrlEncodePathSegment(const std::string& text) {
+    static constexpr char kHexUpper[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(text.size() * 3);
+    for (const char c : text) {
+        const bool safe = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~';
+        if (safe) {
+            out.push_back(c);
+        } else {
+            out.push_back('%');
+            out.push_back(kHexUpper[(static_cast<unsigned char>(c) >> 4) & 0x0F]);
+            out.push_back(kHexUpper[static_cast<unsigned char>(c) & 0x0F]);
+        }
+    }
+    return out;
+}
+
 std::string HandleGetUser(const std::string&) {
     TokenHandle handle = TokenManager::Get()->AcquireHandle();
     if (!handle.configured) {
@@ -666,6 +694,860 @@ std::string HandleDeleteFile(const std::string& arguments_json) {
     return nlohmann::json{{"ok", true}, {"deleted", path}}.dump();
 }
 
+// ===== Issues =====
+
+nlohmann::json ProjectIssue(const nlohmann::json& item) {
+    // 带 pull_request 字段说明它是 PR 不是 Issue：GitHub 的 issues 接口两者混返。
+    return {
+        {"number", item.value("number", 0)},
+        {"title", item.value("title", "")},
+        {"state", item.value("state", "")},
+        {"html_url", item.value("html_url", "")},
+        {"is_pull_request", item.contains("pull_request")},
+        {"comments", item.value("comments", 0)},
+    };
+}
+
+std::string HandleListIssues(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    std::string url = RepoPath(owner, repo) + "/issues";
+    std::string state;
+    if (GetString(args, "state", &state)) {
+        url += "?state=" + state;
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedGet(url, handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    const nlohmann::json body = nlohmann::json::parse(response.body, nullptr, false);
+    if (body.is_discarded() || !body.is_array()) {
+        return nlohmann::json{{"ok", false}, {"error_kind", "decode"}, {"message", "响应正文不是数组"}}.dump();
+    }
+
+    nlohmann::json items = nlohmann::json::array();
+    for (const auto& item : body) {
+        if (item.is_object()) {
+            items.push_back(ProjectIssue(item));
+        }
+    }
+    return nlohmann::json{{"ok", true}, {"count", items.size()}, {"items", items}}.dump();
+}
+
+std::string HandleGetIssue(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    int number = 0;
+    if (!GetOptionalInt(args, "number", &number) || number <= 0) {
+        return MissingParam("number");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedGet(RepoPath(owner, repo) + "/issues/" + std::to_string(number), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+
+    return nlohmann::json{
+        {"ok", true},
+        {"number", body.value("number", 0)},
+        {"title", body.value("title", "")},
+        {"state", body.value("state", "")},
+        {"body", body.value("body", "")},
+        {"html_url", body.value("html_url", "")},
+        {"is_pull_request", body.contains("pull_request")},
+    }.dump();
+}
+
+std::string HandleCreateIssue(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    std::string title;
+    if (!GetString(args, "title", &title)) {
+        return MissingParam("title");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    nlohmann::json payload = {{"title", title}};
+    if (args.contains("body") && args["body"].is_string()) {
+        payload["body"] = args["body"];
+    }
+    if (args.contains("labels") && args["labels"].is_array()) {
+        payload["labels"] = args["labels"];
+    }
+    if (args.contains("assignees") && args["assignees"].is_array()) {
+        payload["assignees"] = args["assignees"];
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedPost(RepoPath(owner, repo) + "/issues", payload.dump(), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+    return nlohmann::json{{"ok", true}, {"number", body.value("number", 0)}, {"html_url", body.value("html_url", "")}}.dump();
+}
+
+std::string HandleUpdateIssue(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    int number = 0;
+    if (!GetOptionalInt(args, "number", &number) || number <= 0) {
+        return MissingParam("number");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    // 只透传显式给出的字段，避免 PATCH 把未提及的字段清空。
+    nlohmann::json payload = nlohmann::json::object();
+    if (args.contains("title") && args["title"].is_string()) {
+        payload["title"] = args["title"];
+    }
+    if (args.contains("body") && args["body"].is_string()) {
+        payload["body"] = args["body"];
+    }
+    if (args.contains("state") && args["state"].is_string()) {
+        payload["state"] = args["state"];
+    }
+    if (payload.empty()) {
+        return nlohmann::json{{"ok", false}, {"error_kind", "invalid_params"}, {"message", "没有可更新的字段"}}.dump();
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedPatch(RepoPath(owner, repo) + "/issues/" + std::to_string(number), payload.dump(), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+    return nlohmann::json{{"ok", true}, {"number", body.value("number", 0)}, {"state", body.value("state", "")}}.dump();
+}
+
+std::string HandleCloseIssue(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    int number = 0;
+    if (!GetOptionalInt(args, "number", &number) || number <= 0) {
+        return MissingParam("number");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    // 关闭就是 PATCH state=closed；单独成工具是为了让意图更明确。
+    nlohmann::json payload = {{"state", "closed"}};
+    if (args.contains("state_reason") && args["state_reason"].is_string()) {
+        payload["state_reason"] = args["state_reason"];
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedPatch(RepoPath(owner, repo) + "/issues/" + std::to_string(number), payload.dump(), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+    return nlohmann::json{{"ok", true}, {"number", body.value("number", 0)}, {"state", body.value("state", "")}}.dump();
+}
+
+// ===== Branches =====
+
+std::string HandleListBranches(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedGet(RepoPath(owner, repo) + "/branches", handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    const nlohmann::json body = nlohmann::json::parse(response.body, nullptr, false);
+    if (body.is_discarded() || !body.is_array()) {
+        return nlohmann::json{{"ok", false}, {"error_kind", "decode"}, {"message", "响应正文不是数组"}}.dump();
+    }
+
+    nlohmann::json items = nlohmann::json::array();
+    for (const auto& item : body) {
+        if (!item.is_object()) {
+            continue;
+        }
+        const nlohmann::json commit = item.contains("commit") && item["commit"].is_object() ? item["commit"] : nlohmann::json::object();
+        items.push_back({{"name", item.value("name", "")}, {"sha", commit.value("sha", "")}, {"protected", item.value("protected", false)}});
+    }
+    return nlohmann::json{{"ok", true}, {"count", items.size()}, {"items", items}}.dump();
+}
+
+std::string HandleGetBranch(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    std::string branch;
+    if (!GetString(args, "branch", &branch)) {
+        return MissingParam("branch");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedGet(RepoPath(owner, repo) + "/branches/" + UrlEncodePathSegment(branch), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+    const nlohmann::json commit = body.contains("commit") && body["commit"].is_object() ? body["commit"] : nlohmann::json::object();
+    return nlohmann::json{
+        {"ok", true},
+        {"name", body.value("name", "")},
+        {"sha", commit.value("sha", "")},
+        {"protected", body.value("protected", false)},
+    }.dump();
+}
+
+std::string HandleCreateBranch(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    std::string branch;
+    if (!GetString(args, "branch", &branch)) {
+        return MissingParam("branch");
+    }
+    // 建分支本质是建一个指向某提交的 ref，起点必须由调用方明确给出。
+    std::string from_sha;
+    if (!GetString(args, "from_sha", &from_sha)) {
+        return MissingParam("from_sha");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    nlohmann::json payload = {{"ref", "refs/heads/" + branch}, {"sha", from_sha}};
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedPost(RepoPath(owner, repo) + "/git/refs", payload.dump(), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+    const nlohmann::json object = body.contains("object") && body["object"].is_object() ? body["object"] : nlohmann::json::object();
+    return nlohmann::json{{"ok", true}, {"ref", body.value("ref", "")}, {"sha", object.value("sha", "")}}.dump();
+}
+
+std::string HandleDeleteBranch(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    std::string branch;
+    if (!GetString(args, "branch", &branch)) {
+        return MissingParam("branch");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedDelete(RepoPath(owner, repo) + "/git/refs/heads/" + UrlEncodePathSegment(branch), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+    return nlohmann::json{{"ok", true}, {"deleted", branch}}.dump();
+}
+
+// ===== Pull Requests =====
+
+nlohmann::json ProjectPullRequest(const nlohmann::json& item) {
+    const nlohmann::json head = item.contains("head") && item["head"].is_object() ? item["head"] : nlohmann::json::object();
+    const nlohmann::json base = item.contains("base") && item["base"].is_object() ? item["base"] : nlohmann::json::object();
+    return {
+        {"number", item.value("number", 0)},
+        {"title", item.value("title", "")},
+        {"state", item.value("state", "")},
+        {"merged", item.value("merged", false)},
+        {"head", head.value("ref", "")},
+        {"base", base.value("ref", "")},
+        {"html_url", item.value("html_url", "")},
+    };
+}
+
+std::string HandleListPullRequests(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    std::string url = RepoPath(owner, repo) + "/pulls";
+    std::string state;
+    if (GetString(args, "state", &state)) {
+        url += "?state=" + state;
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedGet(url, handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    const nlohmann::json body = nlohmann::json::parse(response.body, nullptr, false);
+    if (body.is_discarded() || !body.is_array()) {
+        return nlohmann::json{{"ok", false}, {"error_kind", "decode"}, {"message", "响应正文不是数组"}}.dump();
+    }
+
+    nlohmann::json items = nlohmann::json::array();
+    for (const auto& item : body) {
+        if (item.is_object()) {
+            items.push_back(ProjectPullRequest(item));
+        }
+    }
+    return nlohmann::json{{"ok", true}, {"count", items.size()}, {"items", items}}.dump();
+}
+
+std::string HandleGetPullRequest(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    int number = 0;
+    if (!GetOptionalInt(args, "number", &number) || number <= 0) {
+        return MissingParam("number");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedGet(RepoPath(owner, repo) + "/pulls/" + std::to_string(number), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+
+    nlohmann::json result = ProjectPullRequest(body);
+    result["ok"] = true;
+    result["body"] = body.value("body", "");
+    result["mergeable"] = body.value("mergeable", false);
+    result["merged_at"] = body.contains("merged_at") && body["merged_at"].is_string() ? body["merged_at"] : "";
+    return result.dump();
+}
+
+std::string HandleCreatePullRequest(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    std::string title;
+    if (!GetString(args, "title", &title)) {
+        return MissingParam("title");
+    }
+    std::string head;
+    if (!GetString(args, "head", &head)) {
+        return MissingParam("head");
+    }
+    std::string base;
+    if (!GetString(args, "base", &base)) {
+        return MissingParam("base");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    nlohmann::json payload = {{"title", title}, {"head", head}, {"base", base}};
+    if (args.contains("body") && args["body"].is_string()) {
+        payload["body"] = args["body"];
+    }
+    if (args.contains("draft") && args["draft"].is_boolean()) {
+        payload["draft"] = args["draft"];
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedPost(RepoPath(owner, repo) + "/pulls", payload.dump(), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+    return nlohmann::json{{"ok", true}, {"number", body.value("number", 0)}, {"html_url", body.value("html_url", "")}}.dump();
+}
+
+std::string HandleUpdatePullRequest(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    int number = 0;
+    if (!GetOptionalInt(args, "number", &number) || number <= 0) {
+        return MissingParam("number");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    nlohmann::json payload = nlohmann::json::object();
+    if (args.contains("title") && args["title"].is_string()) {
+        payload["title"] = args["title"];
+    }
+    if (args.contains("body") && args["body"].is_string()) {
+        payload["body"] = args["body"];
+    }
+    if (args.contains("state") && args["state"].is_string()) {
+        payload["state"] = args["state"];
+    }
+    if (args.contains("base") && args["base"].is_string()) {
+        payload["base"] = args["base"];
+    }
+    if (payload.empty()) {
+        return nlohmann::json{{"ok", false}, {"error_kind", "invalid_params"}, {"message", "没有可更新的字段"}}.dump();
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedPatch(RepoPath(owner, repo) + "/pulls/" + std::to_string(number), payload.dump(), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+    return nlohmann::json{{"ok", true}, {"number", body.value("number", 0)}, {"state", body.value("state", "")}}.dump();
+}
+
+std::string HandleMergePullRequest(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    int number = 0;
+    if (!GetOptionalInt(args, "number", &number) || number <= 0) {
+        return MissingParam("number");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    // merge_method 决定历史形态；不传时 GitHub 用仓库默认值。
+    nlohmann::json payload = nlohmann::json::object();
+    if (args.contains("commit_title") && args["commit_title"].is_string()) {
+        payload["commit_title"] = args["commit_title"];
+    }
+    if (args.contains("merge_method") && args["merge_method"].is_string()) {
+        payload["merge_method"] = args["merge_method"];
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedPut(RepoPath(owner, repo) + "/pulls/" + std::to_string(number) + "/merge", payload.dump(), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+    return nlohmann::json{
+        {"ok", true},
+        {"merged", body.value("merged", false)},
+        {"message", body.value("message", "")},
+        {"sha", body.value("sha", "")},
+    }.dump();
+}
+
+// ===== Releases =====
+
+nlohmann::json ProjectRelease(const nlohmann::json& item) {
+    return {
+        {"id", item.value("id", static_cast<long long>(0))},
+        {"tag_name", item.value("tag_name", "")},
+        {"name", item.value("name", "")},
+        {"draft", item.value("draft", false)},
+        {"prerelease", item.value("prerelease", false)},
+        {"html_url", item.value("html_url", "")},
+    };
+}
+
+std::string HandleListReleases(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedGet(RepoPath(owner, repo) + "/releases", handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    const nlohmann::json body = nlohmann::json::parse(response.body, nullptr, false);
+    if (body.is_discarded() || !body.is_array()) {
+        return nlohmann::json{{"ok", false}, {"error_kind", "decode"}, {"message", "响应正文不是数组"}}.dump();
+    }
+
+    nlohmann::json items = nlohmann::json::array();
+    for (const auto& item : body) {
+        if (item.is_object()) {
+            items.push_back(ProjectRelease(item));
+        }
+    }
+    return nlohmann::json{{"ok", true}, {"count", items.size()}, {"items", items}}.dump();
+}
+
+std::string HandleGetRelease(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    int id = 0;
+    if (!GetOptionalInt(args, "id", &id) || id <= 0) {
+        return MissingParam("id");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedGet(RepoPath(owner, repo) + "/releases/" + std::to_string(id), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+    nlohmann::json result = ProjectRelease(body);
+    result["ok"] = true;
+    result["body"] = body.value("body", "");
+    result["target_commitish"] = body.value("target_commitish", "");
+    return result.dump();
+}
+
+std::string HandleCreateRelease(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    std::string tag_name;
+    if (!GetString(args, "tag_name", &tag_name)) {
+        return MissingParam("tag_name");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    nlohmann::json payload = {{"tag_name", tag_name}};
+    if (args.contains("name") && args["name"].is_string()) {
+        payload["name"] = args["name"];
+    }
+    if (args.contains("body") && args["body"].is_string()) {
+        payload["body"] = args["body"];
+    }
+    if (args.contains("draft") && args["draft"].is_boolean()) {
+        payload["draft"] = args["draft"];
+    }
+    if (args.contains("prerelease") && args["prerelease"].is_boolean()) {
+        payload["prerelease"] = args["prerelease"];
+    }
+    if (args.contains("target_commitish") && args["target_commitish"].is_string()) {
+        payload["target_commitish"] = args["target_commitish"];
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedPost(RepoPath(owner, repo) + "/releases", payload.dump(), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+    return nlohmann::json{{"ok", true}, {"id", body.value("id", static_cast<long long>(0))}, {"html_url", body.value("html_url", "")}}.dump();
+}
+
+std::string HandleUpdateRelease(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string owner;
+    std::string repo;
+    if (!args.is_object() || !GetString(args, "owner", &owner)) {
+        return MissingParam("owner");
+    }
+    if (!GetString(args, "repo", &repo)) {
+        return MissingParam("repo");
+    }
+    int id = 0;
+    if (!GetOptionalInt(args, "id", &id) || id <= 0) {
+        return MissingParam("id");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    nlohmann::json payload = nlohmann::json::object();
+    if (args.contains("tag_name") && args["tag_name"].is_string()) {
+        payload["tag_name"] = args["tag_name"];
+    }
+    if (args.contains("name") && args["name"].is_string()) {
+        payload["name"] = args["name"];
+    }
+    if (args.contains("body") && args["body"].is_string()) {
+        payload["body"] = args["body"];
+    }
+    if (args.contains("draft") && args["draft"].is_boolean()) {
+        payload["draft"] = args["draft"];
+    }
+    if (args.contains("prerelease") && args["prerelease"].is_boolean()) {
+        payload["prerelease"] = args["prerelease"];
+    }
+    if (payload.empty()) {
+        return nlohmann::json{{"ok", false}, {"error_kind", "invalid_params"}, {"message", "没有可更新的字段"}}.dump();
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedPatch(RepoPath(owner, repo) + "/releases/" + std::to_string(id), payload.dump(), handle.authorization_header);
+    if (!response.ok) {
+        return FailureJson(response).dump();
+    }
+
+    nlohmann::json body;
+    if (!ParseObject(response, &body, &failure)) {
+        return failure;
+    }
+    return nlohmann::json{{"ok", true}, {"id", body.value("id", static_cast<long long>(0))}, {"tag_name", body.value("tag_name", "")}}.dump();
+}
+
+// ===== GraphQL =====
+
+std::string HandleGraphQL(const std::string& arguments_json) {
+    const nlohmann::json args = nlohmann::json::parse(arguments_json, nullptr, false);
+    std::string query;
+    if (!args.is_object() || !GetString(args, "query", &query)) {
+        return MissingParam("query");
+    }
+
+    TokenHandle handle;
+    std::string failure;
+    if (!RequireToken(&handle, &failure)) {
+        return failure;
+    }
+
+    nlohmann::json payload = {{"query", query}};
+    if (args.contains("variables") && args["variables"].is_object()) {
+        payload["variables"] = args["variables"];
+    }
+
+    const GitHubResponse response = GitHubClient::Get()->AuthorizedPost("/graphql", payload.dump(), handle.authorization_header);
+
+    // GraphQL 出错时常返回 200，错误放在响应体的 errors 里，必须单独判断，
+    // 否则会把查询失败当成成功返回给调用方。
+    const nlohmann::json body = nlohmann::json::parse(response.body, nullptr, false);
+    const bool has_errors = body.is_object() && body.contains("errors") && body["errors"].is_array() && !body["errors"].empty();
+
+    if (!response.ok) {
+        nlohmann::json failure_json = FailureJson(response);
+        if (body.is_object() && body.contains("errors")) {
+            failure_json["graphql_errors"] = body["errors"];
+        }
+        return failure_json.dump();
+    }
+    if (has_errors) {
+        return nlohmann::json{
+            {"ok", false},
+            {"error_kind", "graphql_error"},
+            {"graphql_errors", body["errors"]},
+            {"data", body.contains("data") ? body["data"] : nlohmann::json()},
+        }.dump();
+    }
+
+    return nlohmann::json{{"ok", true}, {"data", body.contains("data") ? body["data"] : nlohmann::json()}}.dump();
+}
+
 } // namespace
 
 void RegisterGitHubTools() {
@@ -822,6 +1704,272 @@ void RegisterGitHubTools() {
     deleteFile.tool.safety.permission_key = "write";
     deleteFile.handler = &HandleDeleteFile;
     registry->Register(deleteFile);
+    // ===== Issues =====
+    const char* issueSchema = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"number":{"type":"integer"}},"required":["owner","repo","number"],"additionalProperties":false})";
+
+    ToolRegistration listIssues;
+    listIssues.tool.name = "github_list_issues";
+    listIssues.tool.title = "List issues";
+    listIssues.tool.description = "列出仓库 Issue。GitHub 此接口也会返回 PR，用 is_pull_request 区分。";
+    listIssues.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"state":{"type":"string","enum":["open","closed","all"]}},"required":["owner","repo"],"additionalProperties":false})";
+    listIssues.tool.annotations.read_only_hint = true;
+    listIssues.tool.annotations.idempotent_hint = true;
+    listIssues.tool.annotations.open_world_hint = true;
+    listIssues.tool.safety.kind = OperationKind::Read;
+    listIssues.tool.safety.permission_key = "read";
+    listIssues.handler = &HandleListIssues;
+    registry->Register(listIssues);
+
+    ToolRegistration getIssue;
+    getIssue.tool.name = "github_get_issue";
+    getIssue.tool.title = "Get issue";
+    getIssue.tool.description = "查询单个 Issue 的详情与正文。";
+    getIssue.tool.input_schema_json = issueSchema;
+    getIssue.tool.annotations.read_only_hint = true;
+    getIssue.tool.annotations.idempotent_hint = true;
+    getIssue.tool.annotations.open_world_hint = true;
+    getIssue.tool.safety.kind = OperationKind::Read;
+    getIssue.tool.safety.permission_key = "read";
+    getIssue.handler = &HandleGetIssue;
+    registry->Register(getIssue);
+
+    ToolRegistration createIssue;
+    createIssue.tool.name = "github_create_issue";
+    createIssue.tool.title = "Create issue";
+    createIssue.tool.description = "创建 Issue，可选正文、标签与指派人。";
+    createIssue.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"title":{"type":"string"},"body":{"type":"string"},"labels":{"type":"array","items":{"type":"string"}},"assignees":{"type":"array","items":{"type":"string"}}},"required":["owner","repo","title"],"additionalProperties":false})";
+    createIssue.tool.annotations.read_only_hint = false;
+    createIssue.tool.annotations.destructive_hint = false;
+    createIssue.tool.annotations.idempotent_hint = false;
+    createIssue.tool.annotations.open_world_hint = true;
+    createIssue.tool.safety.kind = OperationKind::Create;
+    createIssue.tool.safety.permission_key = "create";
+    createIssue.handler = &HandleCreateIssue;
+    registry->Register(createIssue);
+
+    ToolRegistration updateIssue;
+    updateIssue.tool.name = "github_update_issue";
+    updateIssue.tool.title = "Update issue";
+    updateIssue.tool.description = "修改 Issue 的标题、正文或状态。只更新显式给出的字段。";
+    updateIssue.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"number":{"type":"integer"},"title":{"type":"string"},"body":{"type":"string"},"state":{"type":"string","enum":["open","closed"]}},"required":["owner","repo","number"],"additionalProperties":false})";
+    updateIssue.tool.annotations.read_only_hint = false;
+    updateIssue.tool.annotations.destructive_hint = false;
+    updateIssue.tool.annotations.idempotent_hint = true;
+    updateIssue.tool.annotations.open_world_hint = true;
+    updateIssue.tool.safety.kind = OperationKind::Write;
+    updateIssue.tool.safety.permission_key = "write";
+    updateIssue.handler = &HandleUpdateIssue;
+    registry->Register(updateIssue);
+
+    ToolRegistration closeIssue;
+    closeIssue.tool.name = "github_close_issue";
+    closeIssue.tool.title = "Close issue";
+    closeIssue.tool.description = "关闭 Issue，可附带 state_reason。";
+    closeIssue.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"number":{"type":"integer"},"state_reason":{"type":"string","enum":["completed","not_planned","reopened"]}},"required":["owner","repo","number"],"additionalProperties":false})";
+    closeIssue.tool.annotations.read_only_hint = false;
+    closeIssue.tool.annotations.destructive_hint = false;
+    closeIssue.tool.annotations.idempotent_hint = true;
+    closeIssue.tool.annotations.open_world_hint = true;
+    closeIssue.tool.safety.kind = OperationKind::Write;
+    closeIssue.tool.safety.permission_key = "write";
+    closeIssue.handler = &HandleCloseIssue;
+    registry->Register(closeIssue);
+
+    // ===== Branches =====
+    ToolRegistration listBranches;
+    listBranches.tool.name = "github_list_branches";
+    listBranches.tool.title = "List branches";
+    listBranches.tool.description = "列出仓库所有分支及其最新提交 SHA。";
+    listBranches.tool.input_schema_json = repoSchema;
+    listBranches.tool.annotations.read_only_hint = true;
+    listBranches.tool.annotations.idempotent_hint = true;
+    listBranches.tool.annotations.open_world_hint = true;
+    listBranches.tool.safety.kind = OperationKind::Read;
+    listBranches.tool.safety.permission_key = "read";
+    listBranches.handler = &HandleListBranches;
+    registry->Register(listBranches);
+
+    ToolRegistration getBranch;
+    getBranch.tool.name = "github_get_branch";
+    getBranch.tool.title = "Get branch";
+    getBranch.tool.description = "查询单个分支的提交 SHA 与保护状态。";
+    getBranch.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"branch":{"type":"string"}},"required":["owner","repo","branch"],"additionalProperties":false})";
+    getBranch.tool.annotations.read_only_hint = true;
+    getBranch.tool.annotations.idempotent_hint = true;
+    getBranch.tool.annotations.open_world_hint = true;
+    getBranch.tool.safety.kind = OperationKind::Read;
+    getBranch.tool.safety.permission_key = "read";
+    getBranch.handler = &HandleGetBranch;
+    registry->Register(getBranch);
+
+    ToolRegistration createBranch;
+    createBranch.tool.name = "github_create_branch";
+    createBranch.tool.title = "Create branch";
+    createBranch.tool.description = "从指定提交创建分支。from_sha 必须明确给出，可先用 github_get_branch 取。";
+    createBranch.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"branch":{"type":"string"},"from_sha":{"type":"string"}},"required":["owner","repo","branch","from_sha"],"additionalProperties":false})";
+    createBranch.tool.annotations.read_only_hint = false;
+    createBranch.tool.annotations.destructive_hint = false;
+    createBranch.tool.annotations.idempotent_hint = false;
+    createBranch.tool.annotations.open_world_hint = true;
+    createBranch.tool.safety.kind = OperationKind::Create;
+    createBranch.tool.safety.permission_key = "create";
+    createBranch.handler = &HandleCreateBranch;
+    registry->Register(createBranch);
+
+    ToolRegistration deleteBranch;
+    deleteBranch.tool.name = "github_delete_branch";
+    deleteBranch.tool.title = "Delete branch";
+    deleteBranch.tool.description = "删除分支，不可恢复。默认被权限配置禁止，且需要运行时二次确认。";
+    deleteBranch.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"branch":{"type":"string"}},"required":["owner","repo","branch"],"additionalProperties":false})";
+    deleteBranch.tool.annotations.read_only_hint = false;
+    deleteBranch.tool.annotations.destructive_hint = true;
+    deleteBranch.tool.annotations.idempotent_hint = false;
+    deleteBranch.tool.annotations.open_world_hint = true;
+    deleteBranch.tool.safety.kind = OperationKind::Delete;
+    deleteBranch.tool.safety.requires_confirmation = true;
+    deleteBranch.tool.safety.permission_key = "delete_branch";
+    deleteBranch.handler = &HandleDeleteBranch;
+    registry->Register(deleteBranch);
+
+    // ===== Pull Requests =====
+    ToolRegistration listPulls;
+    listPulls.tool.name = "github_list_pull_requests";
+    listPulls.tool.title = "List pull requests";
+    listPulls.tool.description = "列出仓库的 Pull Request。";
+    listPulls.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"state":{"type":"string","enum":["open","closed","all"]}},"required":["owner","repo"],"additionalProperties":false})";
+    listPulls.tool.annotations.read_only_hint = true;
+    listPulls.tool.annotations.idempotent_hint = true;
+    listPulls.tool.annotations.open_world_hint = true;
+    listPulls.tool.safety.kind = OperationKind::Read;
+    listPulls.tool.safety.permission_key = "read";
+    listPulls.handler = &HandleListPullRequests;
+    registry->Register(listPulls);
+
+    ToolRegistration getPull;
+    getPull.tool.name = "github_get_pull_request";
+    getPull.tool.title = "Get pull request";
+    getPull.tool.description = "查询单个 PR 的详情，含可合并状态。";
+    getPull.tool.input_schema_json = issueSchema;
+    getPull.tool.annotations.read_only_hint = true;
+    getPull.tool.annotations.idempotent_hint = true;
+    getPull.tool.annotations.open_world_hint = true;
+    getPull.tool.safety.kind = OperationKind::Read;
+    getPull.tool.safety.permission_key = "read";
+    getPull.handler = &HandleGetPullRequest;
+    registry->Register(getPull);
+
+    ToolRegistration createPull;
+    createPull.tool.name = "github_create_pull_request";
+    createPull.tool.title = "Create pull request";
+    createPull.tool.description = "创建 PR，需要给出源分支 head 与目标分支 base。";
+    createPull.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"title":{"type":"string"},"head":{"type":"string"},"base":{"type":"string"},"body":{"type":"string"},"draft":{"type":"boolean"}},"required":["owner","repo","title","head","base"],"additionalProperties":false})";
+    createPull.tool.annotations.read_only_hint = false;
+    createPull.tool.annotations.destructive_hint = false;
+    createPull.tool.annotations.idempotent_hint = false;
+    createPull.tool.annotations.open_world_hint = true;
+    createPull.tool.safety.kind = OperationKind::Create;
+    createPull.tool.safety.permission_key = "create";
+    createPull.handler = &HandleCreatePullRequest;
+    registry->Register(createPull);
+
+    ToolRegistration updatePull;
+    updatePull.tool.name = "github_update_pull_request";
+    updatePull.tool.title = "Update pull request";
+    updatePull.tool.description = "修改 PR 的标题、正文、状态或目标分支。";
+    updatePull.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"number":{"type":"integer"},"title":{"type":"string"},"body":{"type":"string"},"state":{"type":"string","enum":["open","closed"]},"base":{"type":"string"}},"required":["owner","repo","number"],"additionalProperties":false})";
+    updatePull.tool.annotations.read_only_hint = false;
+    updatePull.tool.annotations.destructive_hint = false;
+    updatePull.tool.annotations.idempotent_hint = true;
+    updatePull.tool.annotations.open_world_hint = true;
+    updatePull.tool.safety.kind = OperationKind::Write;
+    updatePull.tool.safety.permission_key = "write";
+    updatePull.handler = &HandleUpdatePullRequest;
+    registry->Register(updatePull);
+
+    ToolRegistration mergePull;
+    mergePull.tool.name = "github_merge_pull_request";
+    mergePull.tool.title = "Merge pull request";
+    mergePull.tool.description = "合并 PR。merge_method 可选 merge/squash/rebase。难以回退，需要运行时二次确认。";
+    mergePull.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"number":{"type":"integer"},"commit_title":{"type":"string"},"merge_method":{"type":"string","enum":["merge","squash","rebase"]}},"required":["owner","repo","number"],"additionalProperties":false})";
+    mergePull.tool.annotations.read_only_hint = false;
+    mergePull.tool.annotations.destructive_hint = true;
+    mergePull.tool.annotations.idempotent_hint = false;
+    mergePull.tool.annotations.open_world_hint = true;
+    mergePull.tool.safety.kind = OperationKind::Write;
+    mergePull.tool.safety.requires_confirmation = true;
+    mergePull.tool.safety.permission_key = "merge_pull_request";
+    mergePull.handler = &HandleMergePullRequest;
+    registry->Register(mergePull);
+
+    // ===== Releases =====
+    ToolRegistration listReleases;
+    listReleases.tool.name = "github_list_releases";
+    listReleases.tool.title = "List releases";
+    listReleases.tool.description = "列出仓库的 Release。";
+    listReleases.tool.input_schema_json = repoSchema;
+    listReleases.tool.annotations.read_only_hint = true;
+    listReleases.tool.annotations.idempotent_hint = true;
+    listReleases.tool.annotations.open_world_hint = true;
+    listReleases.tool.safety.kind = OperationKind::Read;
+    listReleases.tool.safety.permission_key = "read";
+    listReleases.handler = &HandleListReleases;
+    registry->Register(listReleases);
+
+    ToolRegistration getRelease;
+    getRelease.tool.name = "github_get_release";
+    getRelease.tool.title = "Get release";
+    getRelease.tool.description = "查询单个 Release 的详情与说明正文。";
+    getRelease.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"id":{"type":"integer"}},"required":["owner","repo","id"],"additionalProperties":false})";
+    getRelease.tool.annotations.read_only_hint = true;
+    getRelease.tool.annotations.idempotent_hint = true;
+    getRelease.tool.annotations.open_world_hint = true;
+    getRelease.tool.safety.kind = OperationKind::Read;
+    getRelease.tool.safety.permission_key = "read";
+    getRelease.handler = &HandleGetRelease;
+    registry->Register(getRelease);
+
+    ToolRegistration createRelease;
+    createRelease.tool.name = "github_create_release";
+    createRelease.tool.title = "Create release";
+    createRelease.tool.description = "创建 Release，tag_name 必填；draft 为 true 时先存为草稿。";
+    createRelease.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"tag_name":{"type":"string"},"name":{"type":"string"},"body":{"type":"string"},"draft":{"type":"boolean"},"prerelease":{"type":"boolean"},"target_commitish":{"type":"string"}},"required":["owner","repo","tag_name"],"additionalProperties":false})";
+    createRelease.tool.annotations.read_only_hint = false;
+    createRelease.tool.annotations.destructive_hint = false;
+    createRelease.tool.annotations.idempotent_hint = false;
+    createRelease.tool.annotations.open_world_hint = true;
+    createRelease.tool.safety.kind = OperationKind::Create;
+    createRelease.tool.safety.permission_key = "create";
+    createRelease.handler = &HandleCreateRelease;
+    registry->Register(createRelease);
+
+    ToolRegistration updateRelease;
+    updateRelease.tool.name = "github_update_release";
+    updateRelease.tool.title = "Update release";
+    updateRelease.tool.description = "修改 Release。只更新显式给出的字段。";
+    updateRelease.tool.input_schema_json = R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"id":{"type":"integer"},"tag_name":{"type":"string"},"name":{"type":"string"},"body":{"type":"string"},"draft":{"type":"boolean"},"prerelease":{"type":"boolean"}},"required":["owner","repo","id"],"additionalProperties":false})";
+    updateRelease.tool.annotations.read_only_hint = false;
+    updateRelease.tool.annotations.destructive_hint = false;
+    updateRelease.tool.annotations.idempotent_hint = true;
+    updateRelease.tool.annotations.open_world_hint = true;
+    updateRelease.tool.safety.kind = OperationKind::Write;
+    updateRelease.tool.safety.permission_key = "write";
+    updateRelease.handler = &HandleUpdateRelease;
+    registry->Register(updateRelease);
+
+    // ===== GraphQL =====
+    ToolRegistration graphql;
+    graphql.tool.name = "github_graphql";
+    graphql.tool.title = "GraphQL query";
+    graphql.tool.description = "执行 GraphQL 查询。注意 GitHub 出错时也可能返回 200，错误在响应的 errors 字段里。";
+    graphql.tool.input_schema_json = R"({"type":"object","properties":{"query":{"type":"string"},"variables":{"type":"object"}},"required":["query"],"additionalProperties":false})";
+    graphql.tool.annotations.read_only_hint = false;
+    graphql.tool.annotations.destructive_hint = false;
+    graphql.tool.annotations.idempotent_hint = false;
+    graphql.tool.annotations.open_world_hint = true;
+    graphql.tool.safety.kind = OperationKind::Read;
+    graphql.tool.safety.permission_key = "read";
+    graphql.handler = &HandleGraphQL;
+    registry->Register(graphql);
 }
 
 } // namespace ghb
