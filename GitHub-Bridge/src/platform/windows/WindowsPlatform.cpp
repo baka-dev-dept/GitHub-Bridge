@@ -185,13 +185,4 @@ IPlatform* IPlatform::Create() {
     return new WindowsPlatform();
 }
 
-namespace platform {
-
-IPlatform* Get() {
-    static IPlatform* instance = IPlatform::Create();
-    return instance;
-}
-
-} // namespace platform
-
 } // namespace ghb

@@ -27,8 +27,12 @@ public:
 
 namespace vault {
 
-// 进程级唯一实例。业务代码统一用它，避免每次加解密都新建对象。
-ITokenVault* Get();
+// 进程级唯一实例。inline 函数里的 static 局部变量由标准保证全程序只有一份，
+// 定义放在头文件里既不会产生多个实例，也省掉各平台实现里重复的同一段代码。
+inline ITokenVault* Get() {
+    static ITokenVault* instance = ITokenVault::Create();
+    return instance;
+}
 
 } // namespace vault
 

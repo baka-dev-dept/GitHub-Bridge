@@ -37,9 +37,13 @@ public:
 
 namespace platform {
 
-// 进程级唯一实例，首次调用时创建，进程退出时释放。
-// 业务代码统一用它，避免 Everywhere 都去 Create 一份新对象。
-IPlatform* Get();
+// 进程级唯一实例，首次调用时创建。
+// inline 函数里的 static 局部变量由标准保证全程序只有一份，
+// 所以定义放在头文件里不会产生多个实例，也省掉各平台实现里重复的同一段代码。
+inline IPlatform* Get() {
+    static IPlatform* instance = IPlatform::Create();
+    return instance;
+}
 
 } // namespace platform
 

@@ -167,13 +167,4 @@ ITokenVault* ITokenVault::Create() {
     return new SodiumVault();
 }
 
-namespace vault {
-
-ITokenVault* Get() {
-    static ITokenVault* instance = ITokenVault::Create();
-    return instance;
-}
-
-} // namespace vault
-
 } // namespace ghb

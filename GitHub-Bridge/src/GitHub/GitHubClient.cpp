@@ -34,8 +34,10 @@ int64_t NowMs() {
     return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
-void SleepMs(int ms) {
-    platform::Get()->SleepMs(ms);
+void SleepMs(int64_t ms) {
+    // 实参是 int64_t，接口收 int：这里的等待时长都在 10 秒量级，
+    // 不会溢出，显式收窄是为了不留隐式转换告警。
+    platform::Get()->SleepMs(static_cast<int>(ms));
 }
 
 std::string HeaderValue(const std::map<std::string, std::string>& headers, const char* name) {

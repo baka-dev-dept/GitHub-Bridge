@@ -120,13 +120,4 @@ IPlatform* IPlatform::Create() {
     return new LinuxPlatform();
 }
 
-namespace platform {
-
-IPlatform* Get() {
-    static IPlatform* instance = IPlatform::Create();
-    return instance;
-}
-
-} // namespace platform
-
 } // namespace ghb

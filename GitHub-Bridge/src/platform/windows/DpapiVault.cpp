@@ -140,13 +140,4 @@ ITokenVault* ITokenVault::Create() {
     return new DpapiVault();
 }
 
-namespace vault {
-
-ITokenVault* Get() {
-    static ITokenVault* instance = ITokenVault::Create();
-    return instance;
-}
-
-} // namespace vault
-
 } // namespace ghb
