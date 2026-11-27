@@ -84,8 +84,7 @@ private:
 HttpResponse WinHttpClient::Send(const HttpRequest& request) const {
     HttpResponse response;
 
-    InternetHandle session(WinHttpOpen(L"GitHub-Bridge/0.1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-                                       WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+    InternetHandle session(WinHttpOpen(L"GitHub-Bridge/0.1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
     if (!session) {
         response.transport_error = "WinHttpOpen 失败，错误码 " + std::to_string(GetLastError());
         return response;
@@ -103,9 +102,7 @@ HttpResponse WinHttpClient::Send(const HttpRequest& request) const {
 
     const std::wstring path = ToWide(request.path);
     const std::wstring method = ToWide(request.method);
-    InternetHandle handle(WinHttpOpenRequest(connection.Get(), method.c_str(), path.c_str(), nullptr,
-                                             WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                             WINHTTP_FLAG_SECURE));
+    InternetHandle handle(WinHttpOpenRequest(connection.Get(), method.c_str(), path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE));
     if (!handle) {
         response.transport_error = "WinHttpOpenRequest 失败，错误码 " + std::to_string(GetLastError());
         return response;
@@ -141,8 +138,7 @@ HttpResponse WinHttpClient::Send(const HttpRequest& request) const {
 
     DWORD status_code = 0;
     DWORD status_size = sizeof(status_code);
-    if (!WinHttpQueryHeaders(handle.Get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                             WINHTTP_HEADER_NAME_BY_INDEX, &status_code, &status_size, WINHTTP_NO_HEADER_INDEX)) {
+    if (!WinHttpQueryHeaders(handle.Get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &status_code, &status_size, WINHTTP_NO_HEADER_INDEX)) {
         response.transport_error = "读取状态码失败，错误码 " + std::to_string(GetLastError());
         return response;
     }
@@ -150,12 +146,10 @@ HttpResponse WinHttpClient::Send(const HttpRequest& request) const {
 
     // 一次遍历把所有响应头收进来，后续按名查询走内存，避免重复 IPC。
     DWORD header_size = 0;
-    WinHttpQueryHeaders(handle.Get(), WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX,
-                        WINHTTP_NO_OUTPUT_BUFFER, &header_size, WINHTTP_NO_HEADER_INDEX);
+    WinHttpQueryHeaders(handle.Get(), WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX, WINHTTP_NO_OUTPUT_BUFFER, &header_size, WINHTTP_NO_HEADER_INDEX);
     if (header_size > 0) {
         std::wstring raw(header_size / sizeof(wchar_t) + 1, L'\0');
-        if (WinHttpQueryHeaders(handle.Get(), WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX,
-                                raw.data(), &header_size, WINHTTP_NO_HEADER_INDEX)) {
+        if (WinHttpQueryHeaders(handle.Get(), WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX, raw.data(), &header_size, WINHTTP_NO_HEADER_INDEX)) {
             raw.resize(header_size / sizeof(wchar_t));
             while (!raw.empty() && raw.back() == L'\0') {
                 raw.pop_back();

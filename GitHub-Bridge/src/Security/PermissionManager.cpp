@@ -129,9 +129,7 @@ bool PermissionManager::IsSwitchEnabled(const std::string& permission_key) const
 
 void PermissionManager::PurgeExpired() {
     const int64_t now = NowMs();
-    tickets_.erase(std::remove_if(tickets_.begin(), tickets_.end(),
-                                  [now](const ConfirmTicket& t) { return t.expires_at_unix_ms <= now || t.used; }),
-                   tickets_.end());
+    tickets_.erase(std::remove_if(tickets_.begin(), tickets_.end(), [now](const ConfirmTicket& t) { return t.expires_at_unix_ms <= now || t.used; }), tickets_.end());
 }
 
 std::string PermissionManager::Fingerprint(const std::string& tool_name, const std::string& arguments_json) {
@@ -160,9 +158,7 @@ std::string PermissionManager::Fingerprint(const std::string& tool_name, const s
     return hex;
 }
 
-PermissionOutcome PermissionManager::Check(const std::string& tool_name, bool requires_confirmation,
-                                           const std::string& permission_key, const std::string& target_fingerprint,
-                                           const std::string& provided_token) {
+PermissionOutcome PermissionManager::Check(const std::string& tool_name, bool requires_confirmation, const std::string& permission_key, const std::string& target_fingerprint, const std::string& provided_token) {
     PermissionOutcome outcome;
 
     // 第一道：配置开关。没有权限键表示不受开关约束。

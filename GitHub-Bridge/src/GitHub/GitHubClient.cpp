@@ -50,8 +50,7 @@ GitHubHeaders ExtractHeaders(const std::map<std::string, std::string>& headers) 
 
 } // namespace
 
-GitHubResponse GitHubClient::Classify(int status, const std::string& body,
-                                      const std::map<std::string, std::string>& headers) {
+GitHubResponse GitHubClient::Classify(int status, const std::string& body, const std::map<std::string, std::string>& headers) {
     GitHubResponse response;
     response.status = status;
     response.body = body;
@@ -91,8 +90,7 @@ GitHubResponse GitHubClient::Classify(int status, const std::string& body,
     return response;
 }
 
-GitHubResponse GitHubClient::Request(const std::string& method, const std::string& path,
-                                     const std::string& body, const std::string& authorization) {
+GitHubResponse GitHubClient::Request(const std::string& method, const std::string& path, const std::string& body, const std::string& authorization) {
     HttpRequest request;
     request.method = method;
     request.path = path;
@@ -140,18 +138,15 @@ GitHubResponse GitHubClient::AuthorizedGet(const std::string& path, const std::s
     return Request("GET", path, std::string(), authorization);
 }
 
-GitHubResponse GitHubClient::AuthorizedPost(const std::string& path, const std::string& body,
-                                            const std::string& authorization) {
+GitHubResponse GitHubClient::AuthorizedPost(const std::string& path, const std::string& body, const std::string& authorization) {
     return Request("POST", path, body, authorization);
 }
 
-GitHubResponse GitHubClient::AuthorizedPut(const std::string& path, const std::string& body,
-                                           const std::string& authorization) {
+GitHubResponse GitHubClient::AuthorizedPut(const std::string& path, const std::string& body, const std::string& authorization) {
     return Request("PUT", path, body, authorization);
 }
 
-GitHubResponse GitHubClient::AuthorizedPatch(const std::string& path, const std::string& body,
-                                             const std::string& authorization) {
+GitHubResponse GitHubClient::AuthorizedPatch(const std::string& path, const std::string& body, const std::string& authorization) {
     return Request("PATCH", path, body, authorization);
 }
 

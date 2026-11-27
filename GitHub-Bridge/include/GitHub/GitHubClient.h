@@ -21,8 +21,7 @@ public:
     // 通用请求。method 取 GET/POST/PUT/PATCH/DELETE；
     // body 为空时不发请求体，非空时按 JSON 发送。
     // authorization 为空表示匿名请求。
-    GitHubResponse Request(const std::string& method, const std::string& path,
-                           const std::string& body, const std::string& authorization);
+    GitHubResponse Request(const std::string& method, const std::string& path, const std::string& body, const std::string& authorization);
 
     // 便捷包装：GET 两个变体保留，避免已有调用点全部改写。
     GitHubResponse AnonymousGet(const std::string& path);
@@ -46,8 +45,7 @@ private:
     GitHubClient() = default;
     ~GitHubClient() = default;
 
-    static GitHubResponse Classify(int status, const std::string& body,
-                                   const std::map<std::string, std::string>& headers);
+    static GitHubResponse Classify(int status, const std::string& body, const std::map<std::string, std::string>& headers);
 };
 
 } // namespace ghb

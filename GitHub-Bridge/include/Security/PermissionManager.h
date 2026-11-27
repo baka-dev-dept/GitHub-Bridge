@@ -53,9 +53,7 @@ public:
     //   permission_key：工具声明的配置开关名，空表示不受开关约束；
     //   target_fingerprint：目标对象指纹，票据必须与它一一对应；
     //   provided_token：调用方带来的 confirm_token，首次调用传空。
-    PermissionOutcome Check(const std::string& tool_name, bool requires_confirmation,
-                            const std::string& permission_key, const std::string& target_fingerprint,
-                            const std::string& provided_token);
+    PermissionOutcome Check(const std::string& tool_name, bool requires_confirmation, const std::string& permission_key, const std::string& target_fingerprint, const std::string& provided_token);
 
     // 计算目标指纹。同一目标得到同一指纹，目标一变即不同，
     // 这是「改目标即失效」的实现基础。

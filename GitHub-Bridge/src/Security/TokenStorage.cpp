@@ -54,8 +54,7 @@ std::string ToUtf8(const wchar_t* wide) {
 std::string ReadMachineGuid() {
     wchar_t buffer[256] = {};
     DWORD size = sizeof(buffer) - sizeof(wchar_t);
-    if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Cryptography", L"MachineGuid",
-                     RRF_RT_REG_SZ, nullptr, buffer, &size) != ERROR_SUCCESS) {
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Cryptography", L"MachineGuid", RRF_RT_REG_SZ, nullptr, buffer, &size) != ERROR_SUCCESS) {
         return {};
     }
     return ToUtf8(buffer);
@@ -187,8 +186,7 @@ bool TokenStorage::Save(const std::string& plaintext, std::string* error_message
     DATA_BLOB output{};
     // UI_FORBIDDEN：解密永远不能弹窗，否则会卡死 stdio 服务。
     // 不加 CRYPTPROTECT_LOCAL_MACHINE，保持绑定当前用户。
-    if (!CryptProtectData(&input, L"GitHub-Bridge token", &entropy_blob, nullptr, nullptr,
-                          CRYPTPROTECT_UI_FORBIDDEN, &output)) {
+    if (!CryptProtectData(&input, L"GitHub-Bridge token", &entropy_blob, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &output)) {
         if (error_message) {
             *error_message = "DPAPI 加密失败，错误码 " + std::to_string(GetLastError());
         }
@@ -201,8 +199,7 @@ bool TokenStorage::Save(const std::string& plaintext, std::string* error_message
     const std::wstring wide_tmp = ToWide(tmp_path);
 
     bool ok = false;
-    HANDLE file = CreateFileW(wide_tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
-                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    HANDLE file = CreateFileW(wide_tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
         if (error_message) {
             *error_message = "创建临时文件失败，错误码 " + std::to_string(GetLastError());
@@ -253,8 +250,7 @@ TokenLoadStatus TokenStorage::Load(std::string* plaintext) {
         return TokenLoadStatus::IoError;
     }
 
-    HANDLE file = CreateFileW(wide_path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    HANDLE file = CreateFileW(wide_path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
         const DWORD err = GetLastError();
         return (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) ? TokenLoadStatus::NotFound
@@ -387,9 +383,7 @@ bool TokenStorage::RestrictAcl(const std::string& path, std::string* error_messa
     }
 
     const std::wstring wide_path = ToWide(path);
-    const DWORD rc = SetNamedSecurityInfoW(const_cast<LPWSTR>(wide_path.c_str()), SE_FILE_OBJECT,
-                                           DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
-                                           nullptr, nullptr, dacl, nullptr);
+    const DWORD rc = SetNamedSecurityInfoW(const_cast<LPWSTR>(wide_path.c_str()), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, nullptr, nullptr, dacl, nullptr);
     LocalFree(descriptor);
 
     if (rc != ERROR_SUCCESS) {
