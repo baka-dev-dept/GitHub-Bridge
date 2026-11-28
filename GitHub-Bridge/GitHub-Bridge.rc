@@ -1,0 +1,39 @@
+// Windows 版本资源。让 exe 的属性页显示版本、说明和作者，
+// 而不是一片空白。
+//
+// FILEVERSION 必须和 include/Version.h 里的 GHB_VERSION_* 保持一致——
+// 资源编译器不认 C++ 常量，只能用字面量。
+#include <windows.h>
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     0,1,0,0
+PRODUCTVERSION  0,1,0,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+FILEFLAGS       VS_FF_DEBUG
+#else
+FILEFLAGS       0
+#endif
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "CompanyName",      "baka-dev-dept"
+            VALUE "FileDescription",  "GitHub-Bridge MCP Server"
+            VALUE "FileVersion",      "0.1.0"
+            VALUE "InternalName",     "GitHub-Bridge"
+            VALUE "LegalCopyright",   "MIT License"
+            VALUE "OriginalFilename", "GitHub-Bridge.exe"
+            VALUE "ProductName",      "GitHub-Bridge"
+            VALUE "ProductVersion",   "0.1.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END

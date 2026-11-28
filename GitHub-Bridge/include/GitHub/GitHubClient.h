@@ -2,6 +2,7 @@
 
 #include "Platform/HttpTransport.h"
 #include "Types/GitHubResponse.h"
+#include "Version.h"
 
 #include <map>
 #include <string>
@@ -40,7 +41,7 @@ public:
     GitHubResponse GetRateLimit();
 
     static constexpr const char* kApiVersion = "2022-11-28";
-    static constexpr const char* kUserAgent = "GitHub-Bridge/0.1.0";
+    static constexpr const char* kUserAgent = "GitHub-Bridge/" GHB_VERSION_STRING;
 
     // 暂时性故障的重试上限。MCP 调用是同步阻塞的，重试太多会把一次调用
     // 拖到几十秒，比直接失败还难受，所以只给两次。

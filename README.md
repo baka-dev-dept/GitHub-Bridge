@@ -8,6 +8,19 @@
 
 ---
 
+## 下载
+
+当前版本 **v0.1.0**，到 [Releases](https://github.com/baka-dev-dept/GitHub-Bridge/releases) 下载：
+
+| 平台 | 文件 |
+|---|---|
+| Windows x64 | `GitHub-Bridge-v0.1.0-win-x64.exe` |
+| Linux x64 | `GitHub-Bridge-v0.1.0-linux-x64` |
+
+Windows 版是单文件，无外部 DLL 依赖。版本号可在 exe 属性页查看。
+
+想自己编译见「[构建](#构建)」。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 这是什么
 
 GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调用它，由它代持 GitHub PAT 去访问 GitHub REST API。
@@ -615,6 +628,7 @@ GitHub-Bridge/
 ├── build.ps1               Windows：净化环境后调 MSBuild（规避 MSB6001）
 ├── check-env.ps1           环境自检：二进制/令牌/权限/网络/工具
 ├── import-token.ps1        终端导入 PAT（令牌不进对话）
+├── CHANGELOG.md            版本变更记录
 ├── CMakeLists.txt          跨平台构建（Windows / Linux）
 └── GitHub-Bridge.slnx + GitHub-Bridge.settings.props
 ```

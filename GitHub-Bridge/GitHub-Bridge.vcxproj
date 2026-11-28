@@ -191,6 +191,10 @@
     <ClInclude Include="include\Platform\Platform.h" />
     <ClInclude Include="include\Platform\TokenVault.h" />
     <ClInclude Include="include\Core\GitHubTools.h" />
+    <ClInclude Include="include\Version.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="GitHub-Bridge.rc" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="third_party\nlohmann\adl_serializer.hpp" />

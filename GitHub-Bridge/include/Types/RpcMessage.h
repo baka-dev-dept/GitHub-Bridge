@@ -5,6 +5,8 @@
 #include <utility>
 #include <vector>
 
+#include "Version.h"
+
 namespace ghb {
 
 // JSON-RPC 2.0 错误码。协议层固定值写入规范，见 idea.md「MCP 协议版本」。
@@ -51,7 +53,7 @@ constexpr const char* kMcpProtocolVersion = "2024-11-05";
 // MCP initialize 握手结果，服务端在 tools 层不直接关心，交给 Core 组装。
 struct McpServerInfo {
     std::string name = "GitHub-Bridge";
-    std::string version = "0.1.0";
+    std::string version = kVersion;
 };
 
 struct McpCapabilities {

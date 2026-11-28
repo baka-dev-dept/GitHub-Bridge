@@ -1,12 +1,15 @@
 #include "Platform/HttpTransport.h"
 
 #include "Utils/Logger.h"
+#include "Version.h"
 
 #include <windows.h>
 #include <winhttp.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
+#include <string>
 
 namespace ghb {
 
@@ -89,7 +92,10 @@ public:
 HttpResponse WinHttpTransport::Send(const HttpRequest& request) const {
     HttpResponse response;
 
-    InternetHandle session(WinHttpOpen(L"GitHub-Bridge/0.1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+    // 用户代理带上版本号。WinHttpOpen 收宽字符，而版本号是窄字符串常量，
+    // 每次调用转一次；这点开销相对一次网络往返可以忽略。
+    const std::wstring user_agent = L"GitHub-Bridge/" + std::wstring(kVersion, kVersion + std::strlen(kVersion));
+    InternetHandle session(WinHttpOpen(user_agent.c_str(), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
     if (!session) {
         response.transport_error = "WinHttpOpen 失败，错误码 " + std::to_string(GetLastError());
         return response;
