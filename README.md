@@ -36,18 +36,19 @@ GitHub-Bridge 是一个跑在本机的 MCP Server。Agent 通过 MCP 协议调�
 
 | 模块 | 状态 |
 |---|---|
-| MCP stdio 传输 + JSON-RPC 2.0 | ✅ 已实现，21 项协议测试通过 |
+| MCP stdio 传输 + JSON-RPC 2.0 | ✅ 已实现，8 条编解码测试 + 7 条注册表测试 |
 | DPAPI 令牌加密存储（第二因子 + ACL + 原子写入） | ✅ 已实现，实测通过 |
-| WinHTTP 传输（gzip / TLS / 禁重定向 / 超时） | ✅ 已实现，实测通过 |
-| **31 个 GitHub API 端点** | ✅ **全部实现**，端到端实测通过 |
+| WinHTTP / libcurl 传输（gzip / TLS / 禁重定向 / 超时） | ✅ 已实现，两端实测通过 |
+| **31 个 GitHub API 端点** | ✅ **全部实现**，端到端实测通过（建仓库→写文件→分支→Issue→PR→Merge→Release→删仓库） |
 | **PermissionManager + 危险操作二次确认** | ✅ **已实现**，实测通过 |
-| **仓库白名单（Advanced Permission Rules）** | ✅ 已实现，89 条测试通过 |
-| **限流主动处理 + 暂时性故障重试** | ✅ 已实现，单元验证 22/22 |
-| 通用请求重试 | ✅ 已实现（暂时性故障，仅 GET） |
-| 响应缓存 | ✅ 已实现（ETag 条件请求） |
-| 多令牌 profile | ✅ 已实现（命名 + 显式切换） |
-| 单元测试工程 | ✅ 已实现，**89 条用例** |
+| **仓库白名单** | ✅ 已实现，通配匹配 + 越界拒绝，实测通过 |
+| **限流主动处理 + 暂时性故障重试** | ✅ 已实现（10 条限流测试 + 11 条重试测试） |
+| 响应缓存（ETag 条件请求） | ✅ 已实现，11 条测试 |
+| 多令牌 profile | ✅ 已实现（命名 + 显式切换），6 条测试 |
+| **单元测试工程** | ✅ **89 条用例**，Windows / Linux 双端通过 |
 | CMake 工程 | ✅ 已实现（Windows / Linux） |
+| **跨平台** | ✅ Windows x64 + Linux，接口三件套（HTTP / Vault / Platform） |
+| **终端工具** | ✅ `check-env.ps1` 环境自检、`import-token.ps1` 免对话导入令牌 |
 
 ## 工具清单（35 个）
 
@@ -268,19 +269,21 @@ cmake --build build -j
 # 3. 把自检脚本输出的配置粘进客户端
 ```
 
-`check-env.ps1` 会直接打印可粘贴的配置，例如：
+`check-env.ps1` 会直接打印可粘贴的配置，路径取自它实际找到的二进制（源码构建产物），例如：
 
 ```json
 {
   "mcpServers": {
     "github-bridge": {
-      "command": "D:\\service\\GitHub-Bridge\\x64\\Release\\GitHub-Bridge.exe",
+      "command": "D:\\xiaoyu\\source\\C++\\GitHub-Bridge\\x64\\Release\\GitHub-Bridge.exe",
       "args": [],
       "env": {}
     }
   }
 }
 ```
+
+如果已按「部署到 DSH」把二进制放到别处，把 `command` 换成那个路径即可。
 
 ### 自检脚本检查什么
 
@@ -298,17 +301,45 @@ cmake --build build -j
 
 | 客户端 | 路径 |
 |---|---|
+| **DSH** | `%DSH_HOME%\profiles\desktop\cordis.patch.yml`（见下节） |
 | Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
 | Cursor | `%USERPROFILE%\.cursor\mcp.json` |
 | Cline (VS Code) | 扩展设置里的 MCP Servers 列表 |
 
-改完配置需要**重启客户端**才会加载。
+改完配置需要**重启客户端**才会加载（DSH 例外，它热加载 MCP 连接）。
 
 程序启动后从标准输入读、往标准输出写一行为单位的 JSON-RPC 2.0 消息。**stdout 只承载协议消息**，日志一律走 stderr。
 
+### 部署到 DSH
+
+DSH 用的是 Cordis 插件配置，不是 `mcpServers` JSON。在 `cordis.patch.yml` 里追加：
+
+```yaml
+- insert:
+    - id: mcp-github-bridge
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: github-bridge
+        transport: stdio
+        command: 'D:\xiaoyu\.dsh\GitHub-Bridge.exe'
+        args: []
+        toolCallTimeoutMs: 120000
+        failOnStartupError: false
+```
+
+| 字段 | 理由 |
+|---|---|
+| `toolCallTimeoutMs: 120000` | 默认 60s 对需要二次确认的写操作偏紧；实测单次调用 400~600ms，留足余量 |
+| `failOnStartupError: false` | 启动失败不拖垮整个会话 |
+| 不设 `env` | 程序不读环境变量，用 `WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY` 直接读系统代理 |
+
+**通过 `insert` 追加，不要直接往文件末尾塞裸条目** —— DSH 的配置是补丁列表，`insert` 是它的正规写法。
+
+改完后 DSH 会重连 MCP，工具以 `mcp__github-bridge__<tool_name>` 出现在工具目录里。
+
 ### 首次使用的建议顺序
 
-1. `github_token_import` 导入令牌
+1. 用 `import-token.ps1` 在终端导入令牌（不让令牌进对话）
 2. 配置 `allowed_repositories` 白名单，把 Agent 限制在测试仓库
 3. 用只读工具（`github_get_user`、`github_get_repository`）确认连通
 4. 再逐步启用写操作
