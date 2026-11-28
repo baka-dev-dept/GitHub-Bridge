@@ -315,6 +315,34 @@ cmake --build build -j
 
 ## 导入令牌
 
+### 推荐：用脚本在终端导入
+
+令牌经过对话会暴露给模型。用脚本在终端自己运行，令牌只在你的机器上流转：
+
+```powershell
+# 交互输入（不回显），存到 ai
+.\import-token.ps1
+
+# 存到指定 profile
+.\import-token.ps1 -Profile work
+
+# 从文件读
+.\import-token.ps1 -TokenFile 'D:\token.txt'
+
+# 只看当前状态，不导入
+.\import-token.ps1 -ShowStatus
+```
+
+脚本做的事：读令牌 → 校验格式 → 通过 stdin 传给程序 → 打印 GitHub 的校验结果。
+
+令牌**不进命令行参数**（避免进程列表留痕），**不写日志**，读入后立即清空变量。
+
+如果令牌被 GitHub 拒绝，脚本会明确告诉你「令牌已存下，但 GitHub 不认它」，而不是静默成功。
+
+### 也可以通过 MCP 工具导入
+
+在支持 MCP 的客户端里直接调用：
+
 ```jsonc
 // 存入默认 profile
 {"token": "<你的 PAT>"}
@@ -555,6 +583,7 @@ GitHub-Bridge/
 ├── GitHub-Bridge.Tests/    单元测试工程（89 条用例）
 ├── build.ps1               Windows：净化环境后调 MSBuild（规避 MSB6001）
 ├── check-env.ps1           环境自检：二进制/令牌/权限/网络/工具
+├── import-token.ps1        终端导入 PAT（令牌不进对话）
 ├── CMakeLists.txt          跨平台构建（Windows / Linux）
 └── GitHub-Bridge.slnx + GitHub-Bridge.settings.props
 ```
