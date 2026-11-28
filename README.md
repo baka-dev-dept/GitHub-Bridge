@@ -256,11 +256,25 @@ cmake --build build -j
 
 ## 接入 MCP 客户端
 
+### 三步上手
+
+```powershell
+# 1. 构建
+.\build.ps1 -Configuration Release -Platform x64
+
+# 2. 自检（检查二进制、令牌、权限、网络、工具注册）
+.\check-env.ps1 -Configuration Release
+
+# 3. 把自检脚本输出的配置粘进客户端
+```
+
+`check-env.ps1` 会直接打印可粘贴的配置，例如：
+
 ```json
 {
   "mcpServers": {
     "github-bridge": {
-      "command": "D:\\service\\GitHub-Bridge\\GitHub-Bridge.exe",
+      "command": "D:\\service\\GitHub-Bridge\\x64\\Release\\GitHub-Bridge.exe",
       "args": [],
       "env": {}
     }
@@ -268,7 +282,36 @@ cmake --build build -j
 }
 ```
 
+### 自检脚本检查什么
+
+| 项 | 说明 |
+|---|---|
+| 二进制 | 文件存在、大小 |
+| 令牌存储 | 密文文件存在、**DPAPI 标志是否完好**、能否解密、GitHub 是否认可 |
+| 权限配置 | 文件是否合法、**白名单是否启用**（未启用会告警） |
+| 网络 | 实际调一次 `rate_limit`，报告延迟与剩余额度 |
+| 工具注册 | 应为 35 个 |
+
+退出码：全部通过 `0`，有问题 `1`。可直接用于 CI 或部署前检查。
+
+### 客户端配置文件位置
+
+| 客户端 | 路径 |
+|---|---|
+| Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Cursor | `%USERPROFILE%\.cursor\mcp.json` |
+| Cline (VS Code) | 扩展设置里的 MCP Servers 列表 |
+
+改完配置需要**重启客户端**才会加载。
+
 程序启动后从标准输入读、往标准输出写一行为单位的 JSON-RPC 2.0 消息。**stdout 只承载协议消息**，日志一律走 stderr。
+
+### 首次使用的建议顺序
+
+1. `github_token_import` 导入令牌
+2. 配置 `allowed_repositories` 白名单，把 Agent 限制在测试仓库
+3. 用只读工具（`github_get_user`、`github_get_repository`）确认连通
+4. 再逐步启用写操作
 
 ## 导入令牌
 
@@ -511,6 +554,7 @@ GitHub-Bridge/
 ├── GitHub-Bridge/          主程序工程
 ├── GitHub-Bridge.Tests/    单元测试工程（89 条用例）
 ├── build.ps1               Windows：净化环境后调 MSBuild（规避 MSB6001）
+├── check-env.ps1           环境自检：二进制/令牌/权限/网络/工具
 ├── CMakeLists.txt          跨平台构建（Windows / Linux）
 └── GitHub-Bridge.slnx + GitHub-Bridge.settings.props
 ```
